@@ -13,15 +13,13 @@ const SYMBOLS_TO_TRACK = ['BTCUSDT', 'ETHUSDT'];
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // << 🔥 A CORREÇÃO ESTÁ AQUI 🔥 >>
-  // Permitimos o Localhost (para os teus testes) E o domínio de Produção
+  // << 🔥 CORREÇÃO CORS DEFINITIVA 🔥 >>
+  // 'origin: true' aceita qualquer origem.
+  // Adicionamos também 'methods' e 'credentials' explícitos.
   app.enableCors({ 
-    origin: [
-      'http://localhost:5173', 
-      'https://optafund.com', 
-      'https://www.optafund.com'
-    ],
-    credentials: true, // Importante para cookies/auth headers
+    origin: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
   });
 
   app.useGlobalPipes(new ValidationPipe({ 
@@ -38,6 +36,7 @@ async function bootstrap() {
   const marketService = app.get(MarketService);
   const symbolRepository = app.get<Repository<TrackedSymbol>>(getRepositoryToken(TrackedSymbol));
 
+  // Função de broadcast (igual à anterior)
   const broadcastUpdates = async () => {
     try {
       const symbols = await symbolRepository.find({
@@ -45,7 +44,6 @@ async function bootstrap() {
       });
       const symbolsToTrack = symbols.map(s => s.symbol);
 
-      // Se não houver símbolos ativos, não faz nada
       if (symbolsToTrack.length === 0) return;
 
       const updates = await marketService.getRealtimeUpdates(symbolsToTrack);
@@ -55,7 +53,6 @@ async function bootstrap() {
         
         for (const symbol in updates) {
           const updateData = updates[symbol];
-
           if (updateData.kline) {
             client.send(JSON.stringify({
               type: 'kline_update',
