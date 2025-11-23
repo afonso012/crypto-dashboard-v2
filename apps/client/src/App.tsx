@@ -12,6 +12,7 @@ import RegisterPage from './pages/RegisterPage';
 
 import AdminRoute from './layouts/AdminRoute';
 import AdminPage from './pages/AdminPage';
+import { NewsPage } from './pages/NewsPage';
 
 const ProtectedRoute: React.FC = () => {
   const { isLoggedIn } = useAuth();
@@ -59,6 +60,16 @@ function App() {
         </Route>
       </Route>
       
+      <Route path="/" element={<ProtectedRoute />}>
+        <Route index element={<DashboardPage />} />
+        
+        {/* NOVA ROTA */}
+        <Route path="news" element={<NewsPage />} />
+        
+        <Route path="trading/:symbol" element={<TradingPage />} />
+        <Route path="trading" element={<Navigate to="/" replace />} />
+      </Route>
+
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

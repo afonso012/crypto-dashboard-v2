@@ -11,10 +11,12 @@ import { User } from './entities/user.entity';
 import { TrackedSymbol } from './entities/tracked-symbol.entity';
 import { OtpCode } from './entities/otp-code.entity';
 
+
 // Módulos
 import { MarketModule } from './market/market.module';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
+import { NewsModule } from './news/news.module';
 
 @Module({
   imports: [
@@ -55,6 +57,7 @@ import { AdminModule } from './admin/admin.module';
     MarketModule,
     AuthModule,
     AdminModule,
+    NewsModule,
   ],
   controllers: [],
   providers: [],
