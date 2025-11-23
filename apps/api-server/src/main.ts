@@ -1,3 +1,5 @@
+// Ficheiro: apps/api-server/src/main.ts (VERSÃO FINAL DE PRODUÇÃO)
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { MarketService } from './market/market.service';
@@ -8,16 +10,17 @@ import { Repository } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TrackedSymbol, SymbolStatus } from './entities/tracked-symbol.entity';
 
-const SYMBOLS_TO_TRACK = ['BTCUSDT', 'ETHUSDT'];
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // << 🔥 CORREÇÃO CORS DEFINITIVA 🔥 >>
-  // 'origin: true' aceita qualquer origem.
-  // Adicionamos também 'methods' e 'credentials' explícitos.
+  // << 🔥 1. CORREÇÃO DE CORS (CRÍTICO) 🔥 >>
+  // Permite pedidos do teu domínio de produção
   app.enableCors({ 
-    origin: true,
+    origin: [
+      'http://localhost:5173', 
+      'https://optafund.com', 
+      'https://www.optafund.com'
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
@@ -34,11 +37,12 @@ async function bootstrap() {
   await app.init(); 
   
   const marketService = app.get(MarketService);
+  // << 🔥 2. RECUPERAR LÓGICA DINÂMICA 🔥 >>
   const symbolRepository = app.get<Repository<TrackedSymbol>>(getRepositoryToken(TrackedSymbol));
 
-  // Função de broadcast (igual à anterior)
   const broadcastUpdates = async () => {
     try {
+      // Busca símbolos ativos na BD em vez de usar lista estática
       const symbols = await symbolRepository.find({
         where: { status: SymbolStatus.ACTIVE }
       });
