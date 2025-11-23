@@ -1,35 +1,57 @@
-// Ficheiro: apps/api-server/src/app.module.ts (VERSÃO CORRIGIDA)
+// Ficheiro: apps/api-server/src/app.module.ts (CORRIGIDO E ROBUSTO)
 
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from './entities/user.entity';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
+// Entidades
 import { Kline } from './entities/kline.entity';
 import { BboTick } from './entities/bbo-tick.entity';
+import { User } from './entities/user.entity';
 import { TrackedSymbol } from './entities/tracked-symbol.entity';
-import { MarketModule } from './market/market.module'; // O import está correto
+import { OtpCode } from './entities/otp-code.entity';
+
+// Módulos
+import { MarketModule } from './market/market.module';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
-import { OtpCode } from './entities/otp-code.entity'
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: 'mysecretpassword',
-      database: 'postgres',
-      entities: [Kline, BboTick, User, TrackedSymbol, OtpCode],
-
-      synchronize: true,
-    }), // << A configuração do TypeOrmModule termina aqui
+    // Carrega as variáveis de ambiente globalmente
+    ConfigModule.forRoot({ isGlobal: true }),
     
-    MarketModule, // << O MarketModule deve estar aqui, como um item separado na lista
+    // Configuração Assíncrona do TypeORM (Mais segura)
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const host = configService.get<string>('DB_HOST');
+        const port = configService.get<number>('DB_PORT');
+        const username = configService.get<string>('DB_USERNAME');
+        const password = configService.get<string>('DB_PASSWORD');
+        const database = configService.get<string>('DB_NAME');
+
+        console.log(`[TypeORM] A conectar a: ${host}:${port} (User: ${username}, DB: ${database})`);
+
+        return {
+          type: 'postgres',
+          host: host,
+          port: port,
+          username: username,
+          password: password,
+          database: database,
+          entities: [Kline, BboTick, User, TrackedSymbol, OtpCode],
+          synchronize: true,
+        };
+      },
+    }),
+    
+    MarketModule,
     AuthModule,
     AdminModule,
   ],
-  controllers: [], // Os controllers principais podem ficar vazios
-  providers: [],   // Os providers principais podem ficar vazios
+  controllers: [],
+  providers: [],
 })
 export class AppModule {}
