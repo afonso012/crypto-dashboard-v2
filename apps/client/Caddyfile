@@ -1,15 +1,20 @@
+{
+    # Usa o ambiente de testes da Let's Encrypt (para evitar o erro 429 Rate Limit)
+    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
 optafund.com {
     root * /usr/share/caddy
     file_server
     try_files {path} /index.html
 
-    # Encaminha pedidos de API para o backend
     handle /api/* {
+        uri strip_prefix /api
         reverse_proxy api-server:8081
     }
     
-    # Encaminha WebSockets
     handle /ws {
+        uri strip_prefix /ws 
         reverse_proxy api-server:8081
     }
 }
