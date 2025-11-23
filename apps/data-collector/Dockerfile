@@ -1,13 +1,18 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install
-COPY . .
-RUN pnpm build
 
+COPY . .
+
+RUN npm install -g pnpm && pnpm install
+
+# Constrói apenas o data-collector
+RUN pnpm --filter data-collector build
+
+# --- Imagem Final ---
 FROM node:20-alpine
 WORKDIR /app
-COPY --from=builder /app/dist ./dist
+
 COPY --from=builder /app/node_modules ./node_modules
-COPY package.json ./
+COPY --from=builder /app/apps/data-collector/dist ./dist
+
 CMD ["node", "dist/main.js"]

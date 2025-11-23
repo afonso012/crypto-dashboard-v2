@@ -6,38 +6,44 @@ services:
     restart: always
     environment:
       POSTGRES_USER: user
-      POSTGRES_PASSWORD: passwordSegura123 # Mude isto!
+      POSTGRES_PASSWORD: passwordSegura123
       POSTGRES_DB: optafund
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   api-server:
-    build: ./apps/api-server
+    build:
+      context: .  # << MUDANÇA IMPORTANTE: O contexto é a raiz
+      dockerfile: ./apps/api-server/Dockerfile
     restart: always
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: user
-      DB_PASSWORD: passwordSegura123 # Igual ao de cima
+      DB_PASSWORD: passwordSegura123
       DB_NAME: optafund
       JWT_SECRET: O_MEU_SEGREDO_MUITO_LONGO_E_SEGURO
     depends_on:
       - postgres
 
   data-collector:
-    build: ./apps/data-collector
+    build:
+      context: . # << MUDANÇA IMPORTANTE
+      dockerfile: ./apps/data-collector/Dockerfile
     restart: always
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: user
-      DB_PASSWORD: passwordSegura123 # Igual ao de cima
+      DB_PASSWORD: passwordSegura123
       DB_NAME: optafund
     depends_on:
       - postgres
 
   client:
-    build: ./apps/client
+    build:
+      context: . # << MUDANÇA IMPORTANTE
+      dockerfile: ./apps/client/Dockerfile
     restart: always
     ports:
       - "80:80"
