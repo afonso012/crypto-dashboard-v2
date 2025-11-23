@@ -1,49 +1,74 @@
-// Ficheiro: src/pages/DashboardPage.tsx (FICHEIRO NOVO)
+// Ficheiro: src/pages/DashboardPage.tsx
 
-import React from 'react';
-// Importa os widgets que já tínhamos (assumindo que estão em src/components)
-import { MarketOverview, OrderBook, NewsFeed } from '../components'; 
+import type React from "react"
+import { MarketOverview, OrderBook, NewsFeed } from "../components"
 
-// Um widget de placeholder para o "Portfólio"
 const PortfolioWidget = () => (
-  <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-    <h3 className="font-bold text-white text-xl mb-4">Resumo do Portfólio</h3>
-    <div className="flex justify-between items-center">
-      <span className="text-gray-400">Valor Total (simulado)</span>
-      <span className="text-3xl font-bold text-green-500">$12,450.78</span>
-    </div>
-    <div className="flex justify-between items-center mt-2">
-      <span className="text-gray-400">Ganhos/Perdas 24h</span>
-      <span className="text-lg font-semibold text-red-500">-$130.22 (-1.04%)</span>
+  <div className="glass rounded-2xl p-8 shadow-2xl relative overflow-hidden shimmer">
+    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500"></div>
+
+    <div className="relative z-10">
+      <h3 className="font-bold text-white text-2xl mb-6">Portfolio Summary</h3>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="space-y-2">
+          <span className="text-gray-400 text-sm uppercase tracking-wider font-medium">Total Value</span>
+          <div className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-400">
+            $12,450.78
+          </div>
+        </div>
+        <div className="space-y-2 text-right">
+          <span className="text-gray-400 text-sm uppercase tracking-wider font-medium">24h Change</span>
+          <div className="text-2xl font-semibold text-red-400">
+            -$130.22 <span className="text-lg">(-1.04%)</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mt-8">
+        <div className="glass-subtle rounded-xl p-4 border border-white/10">
+          <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Assets</p>
+          <p className="text-white text-xl font-bold">8</p>
+        </div>
+        <div className="glass-subtle rounded-xl p-4 border border-white/10">
+          <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Profit</p>
+          <p className="text-emerald-400 text-xl font-bold">+12.5%</p>
+        </div>
+        <div className="glass-subtle rounded-xl p-4 border border-white/10">
+          <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">Risk Level</p>
+          <p className="text-blue-400 text-xl font-bold">Medium</p>
+        </div>
+      </div>
     </div>
   </div>
-);
+)
 
 const DashboardPage: React.FC = () => {
   return (
-    // O MainLayout já dá o fundo, mas adicionamos padding à página
-    <div className="p-6 text-white">
-      <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
+    <div className="p-8 text-white min-h-screen">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
+          Dashboard
+        </h1>
+        <p className="text-gray-400">Welcome back, here's your portfolio overview</p>
+      </div>
 
-      {/* Widget principal de "boas-vindas" */}
+      {/* Widget principal */}
       <PortfolioWidget />
 
-      {/* Grelha para os outros widgets */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Coluna 1 */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-8">
           <MarketOverview />
           <NewsFeed />
         </div>
-        
+
         {/* Coluna 2 */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-8">
           <OrderBook />
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default DashboardPage;
+export default DashboardPage

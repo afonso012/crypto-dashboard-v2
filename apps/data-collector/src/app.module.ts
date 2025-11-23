@@ -16,7 +16,10 @@ import { TrackedSymbol } from './entities/tracked-symbol.entity';
 @Module({
   imports: [
     // Carrega as variáveis de ambiente
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ 
+      isGlobal: true,
+      envFilePath: '../../.env', // Sobe 2 níveis (apps/api-server -> apps -> root)
+    }),
     
     // (Opcional: para tarefas agendadas se precisarmos no futuro)
     ScheduleModule.forRoot(),

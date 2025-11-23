@@ -19,7 +19,10 @@ import { AdminModule } from './admin/admin.module';
 @Module({
   imports: [
     // Carrega as variáveis de ambiente globalmente
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ 
+      isGlobal: true,
+      envFilePath: '../../.env', // Sobe 2 níveis (apps/api-server -> apps -> root)
+    }),
     
     // Configuração Assíncrona do TypeORM (Mais segura)
     TypeOrmModule.forRootAsync({
@@ -31,6 +34,8 @@ import { AdminModule } from './admin/admin.module';
         const username = configService.get<string>('DB_USERNAME');
         const password = configService.get<string>('DB_PASSWORD');
         const database = configService.get<string>('DB_NAME');
+
+        console.log('DEBUG PASSWORD:', password ? '********' : 'UNDEFINED');
 
         console.log(`[TypeORM] A conectar a: ${host}:${port} (User: ${username}, DB: ${database})`);
 
