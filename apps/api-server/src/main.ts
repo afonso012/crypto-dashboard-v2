@@ -18,6 +18,13 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 const SYMBOL_CHECK_INTERVAL = 30000; // Verifica a BD a cada 30 segundos
 
 async function bootstrap() {
+
+  console.log('--- DEBUG DE CONEXÃO ---');
+  console.log('DB_HOST:', process.env.DB_HOST);
+  console.log('DB_PORT:', process.env.DB_PORT);
+  console.log('DB_USERNAME:', process.env.DB_USERNAME);
+  console.log('------------------------');
+
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({ origin: 'http://localhost:5173' });
