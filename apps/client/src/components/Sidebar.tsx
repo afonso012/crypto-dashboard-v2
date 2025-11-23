@@ -7,16 +7,10 @@ import type { ReactNode } from "react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 
-// Ícones SVG
+// --- Ícones (Mantêm-se iguais) ---
 const IconDashboard = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-  </svg>
-)
-
-const IconMarkets = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
   </svg>
 )
 
@@ -33,11 +27,18 @@ const IconLogout = () => (
   </svg>
 )
 
-// Componente Auxiliar de Link
-const NavItem: React.FC<{ to: string; label: string; children: ReactNode }> = ({ to, label, children }) => {
+const IconClose = () => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+)
+
+// NavItem agora aceita onClick para fechar o menu ao clicar num link
+const NavItem: React.FC<{ to: string; label: string; children: ReactNode; onClick?: () => void }> = ({ to, label, children, onClick }) => {
   return (
     <NavLink
       to={to}
+      onClick={onClick}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
         ${
@@ -53,13 +54,18 @@ const NavItem: React.FC<{ to: string; label: string; children: ReactNode }> = ({
   )
 }
 
-// Configuração centralizada da navegação
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: <IconDashboard />, role: "all" },
-  { to: "/admin", label: "Painel Admin", icon: <IconAdmin />, role: "admin" },
+  { to: "/admin", label: "Admin Panel", icon: <IconAdmin />, role: "admin" },
 ];
 
-export const Sidebar: React.FC = () => {
+// PROPS NOVAS: isOpen e onClose
+interface SidebarProps {
+    isOpen?: boolean;
+    onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
   const { logout, userRole } = useAuth()
   const navigate = useNavigate()
 
@@ -69,13 +75,34 @@ export const Sidebar: React.FC = () => {
   }
 
   return (
-    <div className="flex h-full min-h-screen w-64 flex-col glass-strong relative">
+    <>
+    {/* Overlay Escuro (Só aparece no Mobile quando aberto) */}
+    <div 
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+    />
+
+    {/* A Sidebar em si */}
+    <div className={`
+        fixed md:static inset-y-0 left-0 z-50 
+        w-64 h-full flex flex-col glass-strong border-r border-white/10
+        transform transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+    `}>
       {/* Efeito de borda esquerda */}
       <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-500/50 via-purple-500/30 to-transparent"></div>
 
       <div className="flex flex-1 flex-col gap-y-5 overflow-y-auto px-6 py-6">
-        <div className="flex h-16 shrink-0 items-center text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-          OptaFund
+        
+        {/* Header da Sidebar com Botão Fechar para Mobile */}
+        <div className="flex h-16 shrink-0 items-center justify-between">
+            <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+            OptaFund
+            </div>
+            {/* Botão X só visível em mobile */}
+            <button onClick={onClose} className="md:hidden text-gray-400 hover:text-white">
+                <IconClose />
+            </button>
         </div>
 
         <nav className="flex flex-1 flex-col">
@@ -83,12 +110,11 @@ export const Sidebar: React.FC = () => {
             <li>
               <ul role="list" className="-mx-2 space-y-2">
                 {NAV_ITEMS.map((item) => {
-                  // Filtra links com base no Role do utilizador
                   if (item.role !== "all" && item.role !== userRole) return null;
 
                   return (
                     <li key={item.to}>
-                      <NavItem to={item.to} label={item.label}>
+                      <NavItem to={item.to} label={item.label} onClick={onClose}>
                         {item.icon}
                       </NavItem>
                     </li>
@@ -110,5 +136,6 @@ export const Sidebar: React.FC = () => {
         </nav>
       </div>
     </div>
+    </>
   )
 }
