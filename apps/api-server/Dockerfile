@@ -1,20 +1,29 @@
-FROM node:20-alpine AS builder
+# Usa uma imagem base com pnpm ativado
+FROM node:20-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+# Etapa de Construção
+FROM base AS builder
 WORKDIR /app
 COPY . .
-RUN npm install -g pnpm && pnpm install
+# Instala TUDO (necessário para o build)
+RUN pnpm install --frozen-lockfile
+# Compila o código
 RUN pnpm --filter api-server build
+# 🔥 A MAGIA: Cria uma pasta /prod/api-server pronta para produção
+# Isto isola as dependências e remove o que não é necessário
+RUN pnpm --filter api-server deploy --prod /prod/api-server
 
-# --- Imagem Final ---
-FROM node:20-alpine
+# Etapa Final (Runner)
+FROM base AS runner
 WORKDIR /app
 
-# 1. Copia os ficheiros de definição de dependências
-COPY package.json pnpm-lock.yaml ./
+# 1. Copia a aplicação preparada (já traz os node_modules corretos!)
+COPY --from=builder /prod/api-server ./
 
-# 2. Instala o pnpm e as dependências de PRODUÇÃO (sem devDependencies)
-RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile
-
-# 3. Copia o código compilado do builder
+# 2. Copia o código compilado (dist) que criámos no builder
 COPY --from=builder /app/apps/api-server/dist ./dist
 
 CMD ["node", "dist/main.js"]
