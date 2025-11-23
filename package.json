@@ -1,0 +1,31 @@
+{
+  "name": "crypto-dashboard-v2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.18.3",
+  "dependencies": {
+    "@nestjs/jwt": "^11.0.1",
+    "@nestjs/passport": "^11.0.5",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.24",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "react-router-dom": "^7.9.5",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.10",
+    "@types/bcrypt": "^6.0.0",
+    "@types/passport-jwt": "^4.0.1"
+  }
+}

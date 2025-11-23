@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: passwordSegura123 # Mude isto!
+      POSTGRES_DB: optafund
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api-server:
+    build: ./apps/api-server
+    restart: always
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: user
+      DB_PASSWORD: passwordSegura123 # Igual ao de cima
+      DB_NAME: optafund
+      JWT_SECRET: O_MEU_SEGREDO_MUITO_LONGO_E_SEGURO
+    depends_on:
+      - postgres
+
+  data-collector:
+    build: ./apps/data-collector
+    restart: always
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: user
+      DB_PASSWORD: passwordSegura123 # Igual ao de cima
+      DB_NAME: optafund
+    depends_on:
+      - postgres
+
+  client:
+    build: ./apps/client
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api-server
+
+volumes:
+  postgres_data:

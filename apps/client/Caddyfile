@@ -1,0 +1,15 @@
+optafund.com {
+    root * /usr/share/caddy
+    file_server
+    try_files {path} /index.html
+
+    # Encaminha pedidos de API para o backend
+    handle /api/* {
+        reverse_proxy api-server:8081
+    }
+    
+    # Encaminha WebSockets
+    handle /ws {
+        reverse_proxy api-server:8081
+    }
+}
