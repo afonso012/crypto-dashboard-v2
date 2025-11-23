@@ -1,20 +1,26 @@
 {
-    # Usa o ambiente de testes da Let's Encrypt (para evitar o erro 429 Rate Limit)
+    # Mantemos o staging enquanto o bloqueio da Let's Encrypt durar
     acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }
 
 optafund.com {
-    root * /usr/share/caddy
-    file_server
-    try_files {path} /index.html
-
+    # 1. Bloco da API (Prioridade Máxima)
+    # Tudo o que começa por /api vai para o backend
     handle /api/* {
         uri strip_prefix /api
         reverse_proxy api-server:8081
     }
-    
+
+    # 2. Bloco de WebSockets
     handle /ws {
-        uri strip_prefix /ws 
+        uri strip_prefix /ws
         reverse_proxy api-server:8081
+    }
+
+    # 3. Bloco do Frontend (Tudo o resto)
+    handle {
+        root * /usr/share/caddy
+        try_files {path} /index.html
+        file_server
     }
 }
