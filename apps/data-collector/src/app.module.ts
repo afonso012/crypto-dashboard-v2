@@ -3,7 +3,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 
 // Módulos
 import { BinanceModule } from './binance/binance.module';
@@ -21,8 +20,7 @@ import { TrackedSymbol } from './entities/tracked-symbol.entity';
       envFilePath: '../../.env', // Sobe 2 níveis (apps/api-server -> apps -> root)
     }),
     
-    // (Opcional: para tarefas agendadas se precisarmos no futuro)
-    ScheduleModule.forRoot(),
+    
     
     // << 🔥 CONFIGURAÇÃO ROBUSTA DA BD 🔥 >>
     TypeOrmModule.forRootAsync({
