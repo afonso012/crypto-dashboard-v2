@@ -11,6 +11,10 @@ export class MarketController {
     return this.marketService.getActiveSymbols();
   }
 
+  @Get('tickers')
+  async getMarketTickers() {
+    return this.marketService.getMarketOverview();
+  }
 
   @Get('/history/:symbol')
   getHistory(
