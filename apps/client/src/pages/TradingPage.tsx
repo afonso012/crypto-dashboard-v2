@@ -10,44 +10,128 @@ import { useRealTimeData } from "../useRealTimeData"
 import { CandleChartComponent } from "../components/CandleChartComponent"
 import { IndicatorChartComponent } from "../components/IndicatorChartComponent"
 import { OrderBook } from "../components"
-import { GlassButton } from "../components/ui/GlassButton"
+
+// --- Componentes de Botão Locais ---
+
+const SymbolButton: React.FC<{ label: string; isActive: boolean; onClick: () => void }> = ({
+  label,
+  isActive,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className={`px-4 py-2 text-sm font-bold rounded-xl transition-all duration-200 border
+      ${
+        isActive
+          ? "bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-lg shadow-blue-500/20"
+          : "bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border-white/10"
+      }`}
+  >
+    {label}
+  </button>
+)
+
+const IndicatorButton: React.FC<{ label: string; isActive: boolean; onClick: () => void }> = ({
+  label,
+  isActive,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className={`px-4 py-2 text-xs font-medium rounded-lg transition-all duration-200
+      ${
+        isActive
+          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+          : "bg-transparent text-gray-400 hover:text-white hover:bg-white/5"
+      }`}
+  >
+    {label}
+  </button>
+)
+
+const TimeframeButton: React.FC<{ label: string; isActive: boolean; onClick: () => void }> = ({
+  label,
+  isActive,
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200
+      ${
+        isActive
+          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+          : "bg-transparent text-gray-400 hover:text-white hover:bg-white/5"
+      }`}
+  >
+    {label}
+  </button>
+)
+
+const OverlayButton: React.FC<{ label: string; isActive: boolean; activeColor: string; onClick: () => void }> = ({
+  label,
+  isActive,
+  activeColor, // ex: "text-amber-400 border-amber-500/30 bg-amber-500/10"
+  onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 border
+      ${
+        isActive
+          ? activeColor
+          : "border-transparent bg-transparent text-gray-400 hover:text-white hover:bg-white/5"
+      }`}
+  >
+    {label}
+  </button>
+)
+
+// --- Componente Principal ---
 
 const TradingPage: React.FC = () => {
+  // 1. Gestão de URL e Símbolo
   const { symbol: urlSymbol } = useParams(); 
   const navigate = useNavigate();
   
-  // Se não houver símbolo, volta ao dashboard
+  // Redireciona se não houver símbolo
   useEffect(() => {
-    if (!urlSymbol) {
-        navigate('/', { replace: true });
-    }
+    if (!urlSymbol) navigate('/', { replace: true });
   }, [urlSymbol, navigate]);
 
   const activeSymbol = urlSymbol || "";
   
+  // 2. Estados da Página
   const [isTimeScaleLocked, setIsTimeScaleLocked] = useState(true)
   const [selectedIndicator, setSelectedIndicator] = useState<"spread" | "rsi" | "macd">("spread")
   const [historyDays, setHistoryDays] = useState(1)
+
+  // Estados para os Botões de Overlay (SMA/EMA)
+  const [showSMA, setShowSMA] = useState(false);
+  const [showEMA, setShowEMA] = useState(false);
   
   const [candleChartApi, setCandleChartApi] = useState<IChartApi | null>(null)
   const [indicatorChartApi, setIndicatorChartApi] = useState<IChartApi | null>(null)
   const syncInProgressRef = useRef(false)
 
-  // Hook de dados em tempo real
+  // 3. Hook de Dados (Agora traz os ticks em tempo real para SMA/EMA)
   const {
     historicalCandles,
     historicalSpread,
     historicalRSI,
     historicalMACD,
+    historicalSMA,
+    historicalEMA,
     realTimeCandleTick,
     realTimeSpreadTick,
     realTimeRSITick,
     realTimeMACDTick,
+    realTimeSMATick, // << Recebido do hook atualizado
+    realTimeEMATick, // << Recebido do hook atualizado
     isLoading,
     error,
   } = useRealTimeData(activeSymbol, historyDays)
 
-  // Sincronização de Gráficos (Mantido igual)
+  // 4. Sincronização de Zoom/Scroll entre gráficos
   useEffect(() => {
     const candleChart = candleChartApi
     const indicatorChart = indicatorChartApi
@@ -78,6 +162,7 @@ const TradingPage: React.FC = () => {
     }
   }, [candleChartApi, indicatorChartApi, isTimeScaleLocked])
 
+  // 5. Renderização do Conteúdo
   const renderChartContent = () => {
     if (!activeSymbol) return <div className="text-white text-center p-10">Initializing...</div>
     if (isLoading && historicalCandles.length === 0)
@@ -104,27 +189,71 @@ const TradingPage: React.FC = () => {
 
     return (
       <>
+        {/* GRÁFICO PRINCIPAL (VELAS) */}
         <div className="glass rounded-2xl p-6 relative shadow-2xl border border-white/10">
-          <div className="absolute top-6 right-6 z-10 flex gap-1 glass-subtle p-1.5 rounded-xl">
-            <GlassButton size="sm" isActive={historyDays === 1} onClick={() => setHistoryDays(1)}>1D</GlassButton>
-            <GlassButton size="sm" isActive={historyDays === 3} onClick={() => setHistoryDays(3)}>3D</GlassButton>
-            <GlassButton size="sm" isActive={historyDays === 7} onClick={() => setHistoryDays(7)}>1W</GlassButton>
-            <GlassButton size="sm" isActive={historyDays === 30} onClick={() => setHistoryDays(30)}>1M</GlassButton>
+          
+          {/* Barra de Ferramentas do Gráfico */}
+          <div className="absolute top-6 right-6 z-10 flex flex-col gap-2 items-end">
+             
+             {/* Timeframes */}
+             <div className="flex gap-1 glass-subtle p-1.5 rounded-xl">
+                <TimeframeButton label="1D" isActive={historyDays === 1} onClick={() => setHistoryDays(1)} />
+                <TimeframeButton label="3D" isActive={historyDays === 3} onClick={() => setHistoryDays(3)} />
+                <TimeframeButton label="1W" isActive={historyDays === 7} onClick={() => setHistoryDays(7)} />
+                <TimeframeButton label="1M" isActive={historyDays === 30} onClick={() => setHistoryDays(30)} />
+                <TimeframeButton label="3M" isActive={historyDays === 90} onClick={() => setHistoryDays(90)} />
+                <TimeframeButton label="1Y" isActive={historyDays === 365} onClick={() => setHistoryDays(365)} />
+             </div>
+
+             {/* Indicadores de Overlay (SMA/EMA) */}
+             <div className="flex gap-1 glass-subtle p-1.5 rounded-xl">
+                <OverlayButton 
+                    label="SMA 20" 
+                    isActive={showSMA} 
+                    activeColor="text-amber-400 border-amber-500/30 bg-amber-500/10"
+                    onClick={() => setShowSMA(!showSMA)}
+                />
+                <OverlayButton 
+                    label="EMA 50" 
+                    isActive={showEMA} 
+                    activeColor="text-cyan-400 border-cyan-500/30 bg-cyan-500/10"
+                    onClick={() => setShowEMA(!showEMA)}
+                />
+             </div>
           </div>
 
           <CandleChartComponent
             onChartReady={setCandleChartApi}
             historicalData={historicalCandles}
+            // Passamos os dados históricos apenas se o botão estiver ativo
+            smaData={showSMA ? historicalSMA : []}
+            emaData={showEMA ? historicalEMA : []}
             realTimeTick={realTimeCandleTick}
+            // Passamos os ticks em tempo real (SMA/EMA) se o botão estiver ativo
+            realTimeSMATick={showSMA ? realTimeSMATick : null}
+            realTimeEMATick={showEMA ? realTimeEMATick : null}
             height="450px"
           />
         </div>
 
+        {/* GRÁFICO SECUNDÁRIO (INDICADORES) */}
         <div className="glass rounded-2xl flex flex-col shadow-2xl overflow-hidden border border-white/10">
           <div className="flex items-center gap-2 p-4 border-b border-white/10 bg-white/5">
-            <GlassButton size="sm" isActive={selectedIndicator === "spread"} onClick={() => setSelectedIndicator("spread")}>Spread</GlassButton>
-            <GlassButton size="sm" isActive={selectedIndicator === "rsi"} onClick={() => setSelectedIndicator("rsi")}>RSI</GlassButton>
-            <GlassButton size="sm" isActive={selectedIndicator === "macd"} onClick={() => setSelectedIndicator("macd")}>MACD</GlassButton>
+            <IndicatorButton
+              label="Spread"
+              isActive={selectedIndicator === "spread"}
+              onClick={() => setSelectedIndicator("spread")}
+            />
+            <IndicatorButton
+              label="RSI"
+              isActive={selectedIndicator === "rsi"}
+              onClick={() => setSelectedIndicator("rsi")}
+            />
+            <IndicatorButton
+              label="MACD"
+              isActive={selectedIndicator === "macd"}
+              onClick={() => setSelectedIndicator("macd")}
+            />
           </div>
           <div className="p-6">
             <IndicatorChartComponent
@@ -143,8 +272,11 @@ const TradingPage: React.FC = () => {
   return (
     <div className="p-8 min-h-screen">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Coluna Esquerda: Gráficos */}
         <div className="lg:col-span-2 flex flex-col gap-8">
-          {/* Header Simplificado: Apenas Título e Botão Voltar */}
+          
+          {/* Header da Página com Botão de Voltar */}
           <div className="flex items-center justify-between px-6 py-4 glass rounded-2xl shadow-2xl border border-white/10">
             <div className="flex items-center gap-4">
                 <button 
@@ -168,7 +300,7 @@ const TradingPage: React.FC = () => {
                   ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                   : "bg-white/5 text-gray-400 hover:text-white border border-white/10"
               }`}
-              title="Sync Charts"
+              title="Sincronizar Tempo"
             >
               {isTimeScaleLocked ? (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,7 +308,7 @@ const TradingPage: React.FC = () => {
                 </svg>
               ) : (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 002 2z" />
                 </svg>
               )}
             </button>
@@ -185,6 +317,7 @@ const TradingPage: React.FC = () => {
           {renderChartContent()}
         </div>
 
+        {/* Coluna Direita: Order Book */}
         <div className="flex flex-col gap-8">
           <OrderBook />
         </div>

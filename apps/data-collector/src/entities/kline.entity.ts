@@ -1,4 +1,4 @@
-// Ficheiro: apps/data-collector/src/entities/kline.entity.ts (ATUALIZADO)
+// Ficheiro: apps/data-collector/src/entities/kline.entity.ts
 
 import { Entity, Column, PrimaryColumn } from 'typeorm';
 
@@ -29,21 +29,24 @@ export class Kline {
   timestamp_ms: number;
 
   @Column({ type: 'double precision', nullable: true })
-  avg_spread: number | null;;
-
-  // << 🔥 INÍCIO DAS NOVAS COLUNAS DE INDICADORES 🔥 >>
+  avg_spread: number | null;
 
   @Column({ type: 'double precision', nullable: true })
   rsi: number | null;
 
   @Column({ type: 'double precision', nullable: true })
-  macd_value: number | null; // A linha MACD
+  macd_value: number | null;
 
   @Column({ type: 'double precision', nullable: true })
-  macd_signal: number | null; // A linha de Sinal
+  macd_signal: number | null;
 
   @Column({ type: 'double precision', nullable: true })
-  macd_histogram: number | null; // O Histograma
+  macd_histogram: number | null;
 
-  // << 🔥 FIM DAS NOVAS COLUNAS DE INDICADORES 🔥 >>
+  // << 🔥 NOVAS COLUNAS PARA OVERLAYS 🔥 >>
+  @Column({ type: 'double precision', nullable: true })
+  sma_20: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  ema_50: number | null;
 }

@@ -1,8 +1,8 @@
-// Ficheiro: apps/api-server/src/entities/kline.entity.ts (ATUALIZADO)
+// Ficheiro: apps/data-collector/src/entities/kline.entity.ts
 
 import { Entity, Column, PrimaryColumn } from 'typeorm';
 
-@Entity({ name: 'klines_1m' }) // Aponta para a tabela correta
+@Entity({ name: 'klines_1m' })
 export class Kline {
   @PrimaryColumn({ type: 'bigint' })
   time: number;
@@ -29,9 +29,7 @@ export class Kline {
   timestamp_ms: number;
 
   @Column({ type: 'double precision', nullable: true })
-  avg_spread: number | null;;
-
-  // << 🔥 ADICIONAR ESTAS COLUNAS (A CORREÇÃO) 🔥 >>
+  avg_spread: number | null;
 
   @Column({ type: 'double precision', nullable: true })
   rsi: number | null;
@@ -45,5 +43,10 @@ export class Kline {
   @Column({ type: 'double precision', nullable: true })
   macd_histogram: number | null;
 
-  // << 🔥 FIM DA CORREÇÃO 🔥 >>
+  // << 🔥 NOVAS COLUNAS PARA OVERLAYS 🔥 >>
+  @Column({ type: 'double precision', nullable: true })
+  sma_20: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  ema_50: number | null;
 }
