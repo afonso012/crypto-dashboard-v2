@@ -61,6 +61,17 @@ export const IndicatorChartComponent: React.FC<ChartProps> = ({
 
     const chart = createChart(chartContainerRef.current, chartOptions);
     chartRef.current = chart;
+
+    const removeLogo = () => {
+        if (!chartContainerRef.current) return;
+        const logoId = chartContainerRef.current.querySelector('#tradingview-copyright-link');
+        if (logoId) logoId.remove();
+        
+        const links = chartContainerRef.current.querySelectorAll('a[href*="tradingview.com"]');
+        links.forEach(link => link.remove());
+      };
+      removeLogo();
+      setTimeout(removeLogo, 100);
     
     if (onChartReady) onChartReady(chart);
 

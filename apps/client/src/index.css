@@ -104,4 +104,15 @@ body::after {
       left: 100%;
     }
   }
+
+  #tradingview-copyright-link {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+  }
+  
+  .tv-lightweight-charts-watermark {
+    display: none !important;
+  }
 }

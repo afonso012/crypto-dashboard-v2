@@ -70,6 +70,27 @@ export const CandleChartComponent: React.FC<ChartProps> = ({
     const chart = createChart(chartContainerRef.current, chartOptions);
     chartRef.current = chart;
 
+    const removeLogo = () => {
+      if (!chartContainerRef.current) return;
+      
+      // Procura pelo ID específico que mostraste na imagem
+      const logoId = chartContainerRef.current.querySelector('#tradingview-copyright-link');
+      if (logoId) {
+        logoId.remove(); // Remove o elemento do HTML
+      }
+
+      // Procura também por qualquer link que aponte para o tradingview (segurança extra)
+      const links = chartContainerRef.current.querySelectorAll('a[href*="tradingview.com"]');
+      links.forEach(link => {
+        (link as HTMLElement).style.display = 'none'; // Esconde
+        link.remove(); // Remove
+      });
+    };
+
+    removeLogo();
+    
+    setTimeout(removeLogo, 100);
+
     if (onChartReady) onChartReady(chart);
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
