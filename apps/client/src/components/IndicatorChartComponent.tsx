@@ -1,15 +1,15 @@
-// Ficheiro: src/components/IndicatorChartComponent.tsx (CORRIGIDO)
+// Ficheiro: src/components/IndicatorChartComponent.tsx
 
 import React, { useEffect, useRef } from 'react';
 import {
   createChart, type IChartApi, type ISeriesApi,
-  ColorType, type ChartOptions, LineSeries,
-  HistogramSeries 
+  ColorType, type ChartOptions, HistogramSeries, AreaSeries
 } from 'lightweight-charts';
 import type { LineData, HistogramData } from "../useRealTimeData";
 
 type IndicatorData = LineData | HistogramData;
-type IndicatorSeries = ISeriesApi<"Line"> | ISeriesApi<"Histogram">;
+// Mudámos de LineSeries para AreaSeries para ficar mais bonito
+type IndicatorSeries = ISeriesApi<"Area"> | ISeriesApi<"Histogram">; 
 
 interface ChartProps {
   historicalData: IndicatorData[];
@@ -30,40 +30,42 @@ export const IndicatorChartComponent: React.FC<ChartProps> = ({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<IndicatorSeries | null>(null);
 
-  // Efeito 1: Construção do Gráfico
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const chartOptions: Partial<ChartOptions> = {
-      layout: { background: { type: ColorType.Solid, color: '#1A202C' }, textColor: '#D1D5DB' },
-      grid: { vertLines: { color: '#2D3748' }, horzLines: { color: '#2D3748' } },
-      
-      // << 🔥 INÍCIO DA CORREÇÃO (Zoom) 🔥 >>
-      handleScroll: {
-        mouseWheel: false, // Roda do rato NÃO FAZ scroll (pan)
-        pressedMouseMove: true,
+      layout: { 
+        background: { type: ColorType.Solid, color: 'transparent' }, 
+        textColor: '#9CA3AF',
+        fontFamily: "'Inter', sans-serif",
       },
-      handleScale: {
-        axisPressedMouseMove: true,
-        mouseWheel: true, // Roda do rato FAZ zoom
-        pinch: true,
+      grid: { 
+        vertLines: { color: 'rgba(255, 255, 255, 0.03)' }, 
+        horzLines: { color: 'rgba(255, 255, 255, 0.03)' } 
       },
-      // << 🔥 FIM DA CORREÇÃO 🔥 >>
-
-      timeScale: { timeVisible: true, borderColor: '#4A5568', secondsVisible: true, shiftVisibleRangeOnNewBar: true },
+      crosshair: {
+        vertLine: { color: 'rgba(255, 255, 255, 0.2)', style: 3, labelBackgroundColor: '#2d3748' },
+        horzLine: { color: 'rgba(255, 255, 255, 0.2)', style: 3, labelBackgroundColor: '#2d3748' },
+      },
+      handleScroll: { mouseWheel: false, pressedMouseMove: true },
+      handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
+      timeScale: { 
+        visible: true, 
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        timeVisible: true,
+        secondsVisible: true 
+      },
       rightPriceScale: { visible: false },
-      leftPriceScale: { visible: true, borderColor: '#4A5568' },
+      leftPriceScale: { visible: true, borderColor: 'transparent' }, // Sem borda no eixo Y
     };
 
     const chart = createChart(chartContainerRef.current, chartOptions);
     chartRef.current = chart;
     
-    if (onChartReady) {
-      onChartReady(chart);
-    }
+    if (onChartReady) onChartReady(chart);
 
     const resizeObserver = new ResizeObserver(entries => {
-      if (entries[0] && entries[0].contentRect.width) {
+      if (entries[0]?.contentRect) {
         chart.resize(entries[0].contentRect.width, entries[0].contentRect.height);
       }
     });
@@ -71,16 +73,13 @@ export const IndicatorChartComponent: React.FC<ChartProps> = ({
 
     return () => {
       resizeObserver.disconnect();
-      if (onChartReady) {
-        onChartReady(null);
-      }
+      if (onChartReady) onChartReady(null);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };
   }, [onChartReady]);
 
-  // Efeito 2: Criar/Trocar a Série
   useEffect(() => {
     if (!chartRef.current) return;
     const chart = chartRef.current;
@@ -91,60 +90,52 @@ export const IndicatorChartComponent: React.FC<ChartProps> = ({
     }
 
     if (chartType === 'line') {
-      const lineSeries = chart.addSeries(LineSeries, {
-        color: '#FF9800',
+      // Usamos AreaSeries para dar um efeito de "fade" em baixo da linha
+      const areaSeries = chart.addSeries(AreaSeries, {
+        lineColor: '#F59E0B', // Amber-500 (Laranja Dourado)
+        topColor: 'rgba(245, 158, 11, 0.4)', // Gradiente topo
+        bottomColor: 'rgba(245, 158, 11, 0.0)', // Gradiente fundo (transparente)
         lineWidth: 2,
         priceScaleId: 'left',
       });
-      seriesRef.current = lineSeries;
+      seriesRef.current = areaSeries;
     } 
     else if (chartType === 'histogram') {
       const histogramSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'left',
+        // Cores dinâmicas são definidas nos dados, mas base aqui:
+        color: '#6366F1', 
       });
       seriesRef.current = histogramSeries;
     }
   }, [chartType]);
 
-  // Efeito 3: Carregar Dados Históricos (Com correção de decimais)
+  // Lógica de Dados (igual)
   useEffect(() => {
     if (historicalData.length > 0 && seriesRef.current && chartRef.current) {
-      
       const price = Math.abs(historicalData[0].value);
       const [precision, minMove] = price < 10 ? [4, 0.0001] : [2, 0.01];
 
-      (seriesRef.current as ISeriesApi<"Line" | "Histogram">).applyOptions({
-        priceFormat: {
-          type: 'price',
-          precision: precision,
-          minMove: minMove,
-        }
+      (seriesRef.current as ISeriesApi<"Area" | "Histogram">).applyOptions({
+        priceFormat: { type: 'price', precision, minMove }
       });
       chartRef.current.priceScale('left').applyOptions({
-        autoScale: true,
-        precision: precision,
+        autoScale: true, precision,
       });
 
       seriesRef.current.setData(historicalData as any);
       chartRef.current.timeScale().fitContent();
-
     } else if (historicalData.length === 0 && seriesRef.current) {
       seriesRef.current.setData([]);
     }
   }, [historicalData]);
 
-  // Efeito 4: Atualizar Ticks em Tempo Real
   useEffect(() => {
     if (realTimeTick && seriesRef.current) {
       seriesRef.current.update(realTimeTick as any);
     }
   }, [realTimeTick]);
 
-  return (
-    <div
-      ref={chartContainerRef}
-      style={{ width: '100%', height: height }}
-    />
-  );
+  return <div ref={chartContainerRef} style={{ width: '100%', height: height }} />;
 };

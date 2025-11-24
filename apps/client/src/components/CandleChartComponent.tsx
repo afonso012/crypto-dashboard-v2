@@ -1,4 +1,4 @@
-// Ficheiro: src/components/CandleChartComponent.tsx (CORRIGIDO)
+// Ficheiro: src/components/CandleChartComponent.tsx
 
 import React, { useEffect, useRef } from 'react';
 import {
@@ -24,45 +24,67 @@ export const CandleChartComponent: React.FC<ChartProps> = ({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
-  // Efeito 1: Construção
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const chartOptions: Partial<ChartOptions> = {
-      layout: { background: { type: ColorType.Solid, color: '#1A202C' }, textColor: '#D1D5DB' },
-      grid: { vertLines: { color: '#2D3748' }, horzLines: { color: '#2D3748' } },
-      
-      // << 🔥 INÍCIO DA CORREÇÃO (Zoom) 🔥 >>
-      handleScroll: {
-        mouseWheel: false, // Roda do rato NÃO FAZ scroll (pan)
-        pressedMouseMove: true,
+      layout: { 
+        // Fundo transparente para assumir a cor do "glass"
+        background: { type: ColorType.Solid, color: 'transparent' }, 
+        textColor: '#9CA3AF', // Gray-400 (mais suave que branco puro)
+        fontFamily: "'Inter', sans-serif",
       },
-      handleScale: {
-        axisPressedMouseMove: true,
-        mouseWheel: true, // Roda do rato FAZ zoom
-        pinch: true,
+      grid: { 
+        // Grelha muito subtil, quase invisível
+        vertLines: { color: 'rgba(255, 255, 255, 0.03)' }, 
+        horzLines: { color: 'rgba(255, 255, 255, 0.03)' } 
       },
-      // << 🔥 FIM DA CORREÇÃO 🔥 >>
-
-      timeScale: { timeVisible: true, borderColor: '#4A5568', secondsVisible: false, shiftVisibleRangeOnNewBar: true },
-      rightPriceScale: { borderColor: '#4A5568' },
+      crosshair: {
+        // Mira mais moderna
+        mode: 1, // Magnet
+        vertLine: {
+          width: 1,
+          color: 'rgba(255, 255, 255, 0.2)',
+          style: 3, // Dashed
+          labelBackgroundColor: '#2d3748',
+        },
+        horzLine: {
+          width: 1,
+          color: 'rgba(255, 255, 255, 0.2)',
+          style: 3,
+          labelBackgroundColor: '#2d3748',
+        },
+      },
+      handleScroll: { mouseWheel: false, pressedMouseMove: true },
+      handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
+      timeScale: { 
+        borderColor: 'rgba(255, 255, 255, 0.1)', 
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      rightPriceScale: { 
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+      },
     };
 
     const chart = createChart(chartContainerRef.current, chartOptions);
     chartRef.current = chart;
 
-    if (onChartReady) {
-      onChartReady(chart);
-    }
+    if (onChartReady) onChartReady(chart);
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-      wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+      // Cores mais vibrantes e "Glow" simulado nas bordas
+      upColor: '#10B981', // Emerald-500
+      downColor: '#EF4444', // Red-500
+      borderVisible: false,
+      wickUpColor: '#34D399', // Emerald-400 (mais claro para brilho)
+      wickDownColor: '#F87171', // Red-400
     });
+    
     seriesRef.current = candleSeries;
 
     const resizeObserver = new ResizeObserver(entries => {
-      if (entries[0] && entries[0].contentRect.width) {
+      if (entries[0]?.contentRect) {
         chart.resize(entries[0].contentRect.width, entries[0].contentRect.height);
       }
     });
@@ -70,51 +92,33 @@ export const CandleChartComponent: React.FC<ChartProps> = ({
 
     return () => {
       resizeObserver.disconnect();
-      if (onChartReady) {
-        onChartReady(null);
-      }
+      if (onChartReady) onChartReady(null);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };
   }, [onChartReady]);
 
-  // Efeito 2: Dados Históricos (Com correção de decimais)
+  // Efeito de Dados (Mantém a lógica de precisão)
   useEffect(() => {
     if (historicalData.length > 0 && seriesRef.current && chartRef.current) {
       const price = historicalData[0].close;
       const [precision, minMove] = price < 100 ? [4, 0.0001] : [2, 0.01];
 
       seriesRef.current.applyOptions({
-        priceFormat: {
-          type: 'price',
-          precision: precision,
-          minMove: minMove,
-        }
+        priceFormat: { type: 'price', precision, minMove }
       });
       chartRef.current.priceScale('right').applyOptions({
-        autoScale: true,
-        precision: precision,
+        autoScale: true, precision,
       });
       seriesRef.current.setData(historicalData);
       chartRef.current.timeScale().fitContent();
-      
-    } else if (historicalData.length === 0 && seriesRef.current) {
-      seriesRef.current.setData([]);
     }
   }, [historicalData]);
 
-  // Efeito 3: Ticks em Tempo Real
   useEffect(() => {
-    if (realTimeTick && seriesRef.current) {
-      seriesRef.current.update(realTimeTick);
-    }
+    if (realTimeTick && seriesRef.current) seriesRef.current.update(realTimeTick);
   }, [realTimeTick]);
 
-  return (
-    <div
-      ref={chartContainerRef}
-      style={{ width: '100%', height: height }}
-    />
-  );
+  return <div ref={chartContainerRef} style={{ width: '100%', height: height }} />;
 };
