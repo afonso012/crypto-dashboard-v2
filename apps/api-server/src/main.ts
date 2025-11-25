@@ -70,7 +70,7 @@ async function bootstrap() {
     }
   };
   
-  setInterval(broadcastUpdates, 2000); 
+  setInterval(broadcastUpdates, 1000); 
 
   server.listen(8081, () => {
     console.log(`[API] Servidor da API e WebSocket a correr na porta 8081`);
