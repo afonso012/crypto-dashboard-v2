@@ -4,12 +4,14 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm
+# 🔥 CORREÇÃO: Instalar o CLI globalmente para garantir que o comando 'nest' existe
+RUN npm install -g @nestjs/cli
 RUN pnpm install
 
 COPY . .
 
-# 🔥 CORREÇÃO: Usar 'nest' em vez de 'nx'
-RUN npx nest build ai-optimizer
+# 🔥 Agora podemos chamar 'nest' diretamente
+RUN nest build ai-optimizer
 
 FROM node:18-alpine
 

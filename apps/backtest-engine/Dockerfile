@@ -4,12 +4,14 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm
+# 🔥 CORREÇÃO: Instalar CLI global
+RUN npm install -g @nestjs/cli
 RUN pnpm install
 
 COPY . .
 
-# 🔥 CORREÇÃO: Usar 'nest' em vez de 'nx'
-RUN npx nest build backtest-engine
+# 🔥 Usar comando direto
+RUN nest build backtest-engine
 
 FROM node:18-alpine
 
