@@ -128,8 +128,8 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
     constructor(httpService) {
         this.httpService = httpService;
         this.logger = new common_1.Logger(AiOptimizerService_1.name);
-        this.BACKTEST_URL = 'http://localhost:3002/backtest/run';
-        this.API_URL = 'http://localhost:8081/strategies';
+        this.BACKTEST_URL = process.env.BACKTEST_URL || 'http://backtest-engine:3002/backtest/run';
+        this.API_URL = process.env.API_URL || 'http://api-server:8081/strategies';
     }
     async mineStrategy(symbol, maxAttempts = 10) {
         this.logger.log(`⛏️ INICIAR MINERAÇÃO MANUAL para ${symbol} (Tentativas Máx: ${maxAttempts})...`);

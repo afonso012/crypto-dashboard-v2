@@ -4,20 +4,25 @@
 }
 
 optafund.com {
-    # 1. Bloco da API (Prioridade Máxima)
-    # Tudo o que começa por /api vai para o backend
+    # 1. Bloco da API
     handle /api/* {
         uri strip_prefix /api
         reverse_proxy api-server:8081
     }
 
-    # 2. Bloco de WebSockets
+    # 🔥 2. NOVO BLOCO: AI Optimizer
+    # Enviamos para o contentor 'ai-optimizer' na porta 3003
+    handle /optimizer/* {
+        reverse_proxy ai-optimizer:3003
+    }
+
+    # 3. Bloco de WebSockets
     handle /ws {
         uri strip_prefix /ws
         reverse_proxy api-server:8081
     }
 
-    # 3. Bloco do Frontend (Tudo o resto)
+    # 4. Frontend
     handle {
         root * /usr/share/caddy
         try_files {path} /index.html

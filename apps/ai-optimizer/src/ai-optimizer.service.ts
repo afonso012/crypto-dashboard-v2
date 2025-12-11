@@ -8,8 +8,8 @@ export class AiOptimizerService {
   private readonly logger = new Logger(AiOptimizerService.name);
   
   // Portas dos teus serviços (Backtest Engine e API Server)
-  private readonly BACKTEST_URL = 'http://localhost:3002/backtest/run'; 
-  private readonly API_URL = 'http://localhost:8081/strategies';
+  private readonly BACKTEST_URL = process.env.BACKTEST_URL || 'http://backtest-engine:3002/backtest/run'; 
+  private readonly API_URL = process.env.API_URL || 'http://api-server:8081/strategies';
 
   constructor(private readonly httpService: HttpService) {}
 

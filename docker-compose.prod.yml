@@ -76,6 +76,38 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  ai-optimizer:
+    build:
+      context: .
+      dockerfile: ./apps/ai-optimizer/Dockerfile
+    restart: always
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backtest-engine
+      - api-server
+
+  backtest-engine:
+    build:
+      context: .
+      dockerfile: ./apps/backtest-engine/Dockerfile
+    restart: always
+    ports:
+      - "3002:3002"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USERNAME=user
+      - DB_PASSWORD=passwordSegura123
+      - DB_NAME=optafund
+    depends_on:
+      db:
+        condition: service_healthy
+
+        
 volumes:
   postgres_data:
   redis_data:
