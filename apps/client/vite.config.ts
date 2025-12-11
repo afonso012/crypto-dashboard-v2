@@ -24,6 +24,12 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''), 
       },
       
+      // 🔥 NOVO: Redirecionar '/optimizer' para o serviço de AI (Porta 3003)
+      '/optimizer': {
+        target: 'http://localhost:3003',
+        changeOrigin: true,
+      },
+      
       /**
        * Regra para conexões WebSocket.
        */

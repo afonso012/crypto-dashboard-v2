@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Query, Logger, HttpException, HttpStatus, Post } from '@nestjs/common';
 import { AiOptimizerService } from './ai-optimizer.service';
 
 @Controller('optimizer')
@@ -7,7 +7,7 @@ export class AiOptimizerController {
 
   constructor(private readonly optimizerService: AiOptimizerService) {}
 
-  @Get('start')
+  @Post('start')
   async startOptimization(
     @Query('symbol') symbol: string = 'BTCUSDT',
     @Query('attempts') attempts: string = '10',

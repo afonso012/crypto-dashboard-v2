@@ -52,7 +52,7 @@ let AiOptimizerController = AiOptimizerController_1 = class AiOptimizerControlle
 };
 exports.AiOptimizerController = AiOptimizerController;
 __decorate([
-    (0, common_1.Get)('start'),
+    (0, common_1.Post)('start'),
     __param(0, (0, common_1.Query)('symbol')),
     __param(1, (0, common_1.Query)('attempts')),
     __metadata("design:type", Function),
