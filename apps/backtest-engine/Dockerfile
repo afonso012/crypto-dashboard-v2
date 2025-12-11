@@ -1,4 +1,4 @@
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY . .
 # 🔥 Usar comando direto
 RUN nest build backtest-engine
 
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
