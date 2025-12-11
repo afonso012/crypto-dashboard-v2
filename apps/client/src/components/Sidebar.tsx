@@ -39,6 +39,12 @@ const IconClose = () => (
     </svg>
 )
 
+const IconBeaker = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/>
+  </svg>
+)
+
 // NavItem agora aceita onClick para fechar o menu ao clicar num link
 const NavItem: React.FC<{ to: string; label: string; children: ReactNode; onClick?: () => void }> = ({ to, label, children, onClick }) => {
   return (
@@ -64,6 +70,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: <IconDashboard />, role: "all" },
   { to: "/news", label: "News", icon: <IconNews />, role: "all" },
   { to: "/admin", label: "Admin Panel", icon: <IconAdmin />, role: "admin" },
+  { to: "/strategies", label: "Strategy Lab", icon: <IconBeaker />, role: "admin" },
 ];
 
 // PROPS NOVAS: isOpen e onClose

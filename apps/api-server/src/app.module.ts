@@ -10,13 +10,16 @@ import { BboTick } from './entities/bbo-tick.entity';
 import { User } from './entities/user.entity';
 import { TrackedSymbol } from './entities/tracked-symbol.entity';
 import { OtpCode } from './entities/otp-code.entity';
-
+import { Strategy as StrategyEntity} from './entities/strategy.entity';
 
 // Módulos
 import { MarketModule } from './market/market.module';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
 import { NewsModule } from './news/news.module';
+import { BacktestResult } from './entities/backtest-result.entity';
+import { Strategy } from 'passport-jwt';
+import { StrategiesModule } from './strategies/strategies.module';
 
 @Module({
   imports: [
@@ -48,7 +51,7 @@ import { NewsModule } from './news/news.module';
           username: username,
           password: password,
           database: database,
-          entities: [Kline, BboTick, User, TrackedSymbol, OtpCode],
+          entities: [Kline, BboTick, User, TrackedSymbol, OtpCode, BacktestResult, StrategyEntity],
           synchronize: true,
         };
       },
@@ -58,6 +61,7 @@ import { NewsModule } from './news/news.module';
     AuthModule,
     AdminModule,
     NewsModule,
+    StrategiesModule,
   ],
   controllers: [],
   providers: [],

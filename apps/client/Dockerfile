@@ -1,25 +1,22 @@
-# Etapa 1: Construir (Build)
-FROM node:20-alpine as builder
-WORKDIR /app
+FROM node:20-alpine AS builder
 
-# Copia tudo da raiz
+WORKDIR /usr/src/app
+
+RUN npm install -g pnpm
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+COPY libs ./libs
+COPY apps/client/package.json ./apps/client/
+
+RUN pnpm install --frozen-lockfile
+
 COPY . .
 
-# Instala dependências
-RUN npm install -g pnpm && pnpm install
-
-# Constrói apenas o cliente
+# 🔥 CORREÇÃO: Sintaxe correta do filtro pnpm
 RUN pnpm --filter client build
 
-# Etapa 2: Servir com Caddy
+# --- Production Stage ---
 FROM caddy:2-alpine
-
-# << 🔥 A CORREÇÃO ESTÁ AQUI 🔥 >>
-# O caminho correto depois do build é: /app/apps/client/dist
-COPY --from=builder /app/apps/client/dist /usr/share/caddy
-
-# Copia o Caddyfile da pasta correta
-COPY --from=builder /app/apps/client/Caddyfile /etc/caddy/Caddyfile
-
-EXPOSE 80
-EXPOSE 443
+COPY --from=builder /usr/src/app/apps/client/dist /usr/share/caddy
+COPY --from=builder /usr/src/app/apps/client/Caddyfile /etc/caddy/Caddyfile

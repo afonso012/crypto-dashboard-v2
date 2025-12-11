@@ -1,0 +1,47 @@
+{
+  "projects": {
+    "ai-optimizer": {
+      "type": "application",
+      "root": "apps/ai-optimizer",
+      "entryFile": "main",
+      "sourceRoot": "apps/ai-optimizer/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/ai-optimizer/tsconfig.app.json"
+      }
+    },
+    "backtest-engine": {
+      "type": "application",
+      "root": "apps/backtest-engine",
+      "entryFile": "main",
+      "sourceRoot": "apps/backtest-engine/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/backtest-engine/tsconfig.app.json"
+      }
+    },
+    "crypto-dashboard-v2": {
+      "type": "application",
+      "root": "apps/crypto-dashboard-v2",
+      "entryFile": "main",
+      "sourceRoot": "apps/crypto-dashboard-v2/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/crypto-dashboard-v2/tsconfig.app.json"
+      }
+    },
+    "technical-analysis": {
+      "type": "library",
+      "root": "libs/technical-analysis",
+      "entryFile": "index",
+      "sourceRoot": "libs/technical-analysis/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/technical-analysis/tsconfig.lib.json"
+      }
+    }
+  },
+  "compilerOptions": {
+    "webpack": true,
+    "tsConfigPath": "apps/crypto-dashboard-v2/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/crypto-dashboard-v2",
+  "sourceRoot": "apps/crypto-dashboard-v2/src"
+}

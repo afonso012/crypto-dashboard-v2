@@ -1,8 +1,8 @@
 
 
 services:
-  postgres:
-    image: postgres:15-alpine
+  db:
+    image: timescale/timescaledb:latest-pg14
     restart: always
     environment:
       POSTGRES_USER: user
@@ -12,6 +12,11 @@ services:
       - "127.0.0.1:5432:5432"  
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d optafund"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   api-server:
     build:
@@ -26,7 +31,10 @@ services:
       DB_NAME: optafund
       JWT_SECRET: O_MEU_SEGREDO_MUITO_LONGO_E_SEGURO
     depends_on:
-      - postgres
+      db: # <--- O NOME IMPORTANTE É ESTE
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   data-collector:
     build:
@@ -40,7 +48,10 @@ services:
       DB_PASSWORD: passwordSegura123
       DB_NAME: optafund
     depends_on:
-      - postgres
+      db: # <--- O NOME IMPORTANTE É ESTE
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   client:
     build:
@@ -53,5 +64,18 @@ services:
     depends_on:
       - api-server
 
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 volumes:
   postgres_data:
+  redis_data:

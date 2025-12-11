@@ -1,0 +1,18 @@
+{
+  "name": "ai-optimizer",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@nestjs/axios": "^4.0.1",
+    "@nestjs/bullmq": "^11.0.4",
+    "axios": "^1.13.2",
+    "bullmq": "^5.65.1",
+    "rxjs": "^7.8.2"
+  }
+}

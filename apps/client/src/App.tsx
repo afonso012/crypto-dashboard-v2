@@ -13,6 +13,8 @@ import RegisterPage from './pages/RegisterPage';
 import AdminRoute from './layouts/AdminRoute';
 import AdminPage from './pages/AdminPage';
 import { NewsPage } from './pages/NewsPage';
+import StrategyLabPage from './pages/StrategyLabPage';
+import StrategyDetailsPage from './pages/StrategyDetailsPage';
 
 const ProtectedRoute: React.FC = () => {
   const { isLoggedIn } = useAuth();
@@ -47,6 +49,8 @@ function App() {
       <Route path="/" element={<ProtectedRoute />}>
         <Route index element={<DashboardPage />} />
         
+        <Route path="strategies" element={<StrategyLabPage />} />
+        <Route path="strategies/:id" element={<StrategyDetailsPage />} />
         {/* Rota de Trading Dinâmica (Requer Símbolo) */}
         <Route path="trading/:symbol" element={<TradingPage />} />
         
