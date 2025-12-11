@@ -8,8 +8,8 @@ RUN pnpm install
 
 COPY . .
 
-# 🔥 CORREÇÃO: Usar 'npx nx' em vez de 'pnpm nx'
-RUN npx nx build ai-optimizer
+# 🔥 CORREÇÃO: Usar 'nest' em vez de 'nx'
+RUN npx nest build ai-optimizer
 
 FROM node:18-alpine
 

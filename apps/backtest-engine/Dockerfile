@@ -8,8 +8,8 @@ RUN pnpm install
 
 COPY . .
 
-# 🔥 CORREÇÃO: Usar 'npx nx' em vez de 'pnpm nx'
-RUN npx nx build backtest-engine
+# 🔥 CORREÇÃO: Usar 'nest' em vez de 'nx'
+RUN npx nest build backtest-engine
 
 FROM node:18-alpine
 
