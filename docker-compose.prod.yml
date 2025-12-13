@@ -5,9 +5,9 @@ services:
     image: timescale/timescaledb:latest-pg14
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: passwordSegura123
-      POSTGRES_DB: optafund
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "127.0.0.1:5432:5432"  
     volumes:
@@ -24,12 +24,12 @@ services:
       dockerfile: ./apps/api-server/Dockerfile
     restart: always
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USERNAME: user
-      DB_PASSWORD: passwordSegura123
-      DB_NAME: optafund
-      JWT_SECRET: O_MEU_SEGREDO_MUITO_LONGO_E_SEGURO
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
       db: # <--- O NOME IMPORTANTE É ESTE
         condition: service_healthy
@@ -42,11 +42,11 @@ services:
       dockerfile: ./apps/data-collector/Dockerfile
     restart: always
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USERNAME: user
-      DB_PASSWORD: passwordSegura123
-      DB_NAME: optafund
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
     depends_on:
       db: # <--- O NOME IMPORTANTE É ESTE
         condition: service_healthy
@@ -98,11 +98,11 @@ services:
     ports:
       - "3002:3002"
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_USERNAME=user
-      - DB_PASSWORD=passwordSegura123
-      - DB_NAME=optafund
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
     depends_on:
       db:
         condition: service_healthy

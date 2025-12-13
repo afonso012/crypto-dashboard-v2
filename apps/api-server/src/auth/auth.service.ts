@@ -9,19 +9,23 @@ import { JwtService } from '@nestjs/jwt';
 import { Resend } from 'resend';
 import * as crypto from 'crypto';
 import { SendOtpDto, VerifyOtpDto } from './dto/auth-otp.dto';
+import { ConfigService } from '@nestjs/config';
 
-// ⚠️ Substitua pela sua chave real do Resend
-const RESEND_API_KEY = 're_HKrvUKe7_2iKY9qpBrpbgkfPjEz2wwdrr'; 
+
 
 @Injectable()
 export class AuthService {
-  private resend = new Resend(RESEND_API_KEY);
+  private resend: Resend;
 
   constructor(
     @InjectRepository(User) private usersRepository: Repository<User>,
     @InjectRepository(OtpCode) private otpRepository: Repository<OtpCode>,
+    private configService: ConfigService,
     private jwtService: JwtService,
-  ) {}
+  ) {
+    const apiKey = this.configService.getOrThrow<string>('RESEND_API_KEY');
+    this.resend = new Resend(apiKey);
+  }
 
   // --- PASSO 1: ENVIAR O CÓDIGO ---
   async sendOtp(dto: SendOtpDto) {
