@@ -219,8 +219,8 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
                     const fitness = this.calculateFitness(data);
                     const metrics = this.calculateAdvancedMetrics(data.history);
                     let adjustedFitness = fitness;
-                    if (metrics.profitFactor < 1)
-                        adjustedFitness -= 100;
+                    if (metrics.profitFactor < 1.1)
+                        adjustedFitness -= 200;
                     results.push({
                         gene,
                         fitness: adjustedFitness,
@@ -278,6 +278,8 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             exitRules: Array.from({ length: numExit }, () => this.generateRandomRule()),
             stopLossPct: (Math.random() * 0.05) + 0.02,
             takeProfitPct: (Math.random() * 0.15) + 0.03,
+            feePct: 0.001,
+            slippagePct: 0.0005
         };
     }
     generateRandomRule() {

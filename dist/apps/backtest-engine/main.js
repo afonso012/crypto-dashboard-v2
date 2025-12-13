@@ -169,7 +169,6 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
     constructor(klineRepo) {
         this.klineRepo = klineRepo;
         this.logger = new common_1.Logger(BacktestEngineService_1.name);
-        this.TRADING_FEE = 0.001;
     }
     async runBacktest(params) {
         const klines = await this.klineRepo.find({
@@ -222,8 +221,14 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                     reason = 'EXIT_RULE';
                 }
                 if (exitPrice > 0) {
-                    const grossValue = position.size * exitPrice;
-                    const netValue = grossValue * (1 - this.TRADING_FEE);
+                    const fee = params.strategy.feePct ?? 0.001;
+                    const slippage = params.strategy.slippagePct ?? 0.0005;
+                    let realExitPrice = exitPrice * (1 - slippage);
+                    if (reason === 'STOP_LOSS') {
+                        realExitPrice = exitPrice * (1 - (slippage * 2));
+                    }
+                    const grossValue = position.size * realExitPrice;
+                    const netValue = grossValue * (1 - fee);
                     const profit = netValue - balance;
                     const roiPct = ((netValue - balance) / balance) * 100;
                     balance = netValue;
@@ -311,31 +316,22 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
     }
     getIndicatorValue(index, rule, indicators) {
         if (rule.indicator === 'MACD') {
-            const macdRes = indicators['MACD_STD'];
-            if (!macdRes)
+            const offset = 34;
+            const macdResults = indicators['MACD_STD'];
+            if (!macdResults)
                 return 0;
-            const offset = macdRes.length;
-            const diff = 100000;
-            const arr = macdRes;
-            const realIndex = index - (100000);
-            const key = `${rule.indicator}_${rule.period}`;
-            const data = indicators[key] || indicators['MACD_STD'];
-            if (!data)
+            const arrayIndex = index - offset;
+            if (arrayIndex < 0 || arrayIndex >= macdResults.length)
                 return 0;
-            const period = rule.indicator === 'MACD' ? 26 : rule.period;
-            const arrayIndex = index - period + 1;
-            if (arrayIndex < 0 || arrayIndex >= data.length)
-                return 0;
-            if (rule.indicator === 'MACD')
-                return data[arrayIndex]?.histogram || 0;
-            return data[arrayIndex];
+            return macdResults[arrayIndex]?.histogram || 0;
         }
         const key = `${rule.indicator}_${rule.period}`;
         const data = indicators[key];
-        if (!data)
+        if (!data) {
             return 0;
+        }
         const arrayIndex = index - rule.period;
-        if (arrayIndex < 0)
+        if (arrayIndex < 0 || arrayIndex >= data.length)
             return 0;
         return data[arrayIndex];
     }

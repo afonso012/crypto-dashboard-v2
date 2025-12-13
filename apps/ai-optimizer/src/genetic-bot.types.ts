@@ -32,6 +32,8 @@ export interface StrategyGene {
   exitRules: StrategyRule[];
   stopLossPct: number;
   takeProfitPct: number;
+  slippagePct: number;
+  feePct: number;
 }
 
 export interface SimulationResult {

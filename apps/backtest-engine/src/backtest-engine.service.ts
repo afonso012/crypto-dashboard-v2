@@ -17,15 +17,15 @@ export interface StrategyConfig {
   exitRules: StrategyRule[];
   stopLossPct: number;
   takeProfitPct: number;
+  slippagePct?: number; 
+  feePct?: number;
 }
 
 @Injectable()
 export class BacktestEngineService {
   private readonly logger = new Logger(BacktestEngineService.name);
   
-  // 🔥 CONFIGURAÇÃO DE TAXAS (Realismo)
-  // 0.1% Maker + 0.1% Taker (padrão Binance spot sem BNB)
-  private readonly TRADING_FEE = 0.001; 
+ 
 
   constructor(
     @InjectRepository(Kline)
@@ -116,12 +116,26 @@ export class BacktestEngineService {
 
         // Executar Venda
         if (exitPrice > 0) {
-          // Valor bruto da venda
-          const grossValue = position.size * exitPrice;
-          // Deduzir taxa de saída
-          const netValue = grossValue * (1 - this.TRADING_FEE);
+          // 1. Definir Taxas e Slippage (com valores por defeito conservadores)
+          const fee = params.strategy.feePct ?? 0.001; // 0.1% default
+          const slippage = params.strategy.slippagePct ?? 0.0005; // 0.05% default
           
-          const profit = netValue - balance; // Lucro líquido real (já com taxas)
+          // 2. Aplicar Slippage ao Preço de Saída
+          // Se estamos a VENDER, o slippage baixa o preço que recebemos.
+          // (Se fosse COMPRA, aumentaria o preço que pagamos).
+          let realExitPrice = exitPrice * (1 - slippage);
+
+          // 3. Simulação de "Pior Caso" em Stop Loss
+          // Se foi um Stop Loss, o deslize costuma ser maior (pânico de mercado)
+          if (reason === 'STOP_LOSS') {
+             realExitPrice = exitPrice * (1 - (slippage * 2)); 
+          }
+
+          // 4. Cálculos Financeiros
+          const grossValue = position.size * realExitPrice;
+          const netValue = grossValue * (1 - fee);
+          
+          const profit = netValue - balance; 
           const roiPct = ((netValue - balance) / balance) * 100;
 
           balance = netValue;
@@ -226,66 +240,49 @@ export class BacktestEngineService {
   }
 
   private getIndicatorValue(index: number, rule: StrategyRule, indicators: any) {
-    // Nota: As libs TA retornam arrays menores que o original (por causa do periodo inicial)
-    // Precisamos de alinhar o índice.
-    // RSI(14) começa no índice 14. Logo, indicators[14] corresponde a closes[14].
-    // Mas a lib TA muitas vezes retorna o resultado 0 correspondendo ao periodo.
-    // O método mais seguro é pegar do fim se estivermos a iterar linearmente, mas aqui é acesso aleatório.
-    
-    // Correção de alinhamento para TA libraries:
-    // Se temos 1000 velas e SMA(200), o array de SMA tem 801 valores.
-    // O valor correspondente à vela 1000 (index 999) é o SMA[800].
-    // Formula: TA_Index = Candle_Index - (Total_Candles - Total_TA_Values)
-    
+    // LÓGICA DE ALINHAMENTO EXATO (Anti-Repintura)
+    // A biblioteca 'technicalindicators' retorna arrays mais pequenos que o original.
+    // Exemplo SMA(20): O primeiro valor válido aparece na vela 20.
+    // O array de resultados começa no índice 0, que corresponde à vela 19 (0-indexed).
+    // Portanto: Valor da Vela[i] = Resultado[i - Periodo]
+
     if (rule.indicator === 'MACD') {
-        const macdRes = indicators['MACD_STD'];
-        if (!macdRes) return 0;
-        const offset = macdRes.length; // array de objetos
-        const diff = 100000; // Simplificação: em backtest iterativo, usamos lógica direta se calculamos tudo antes
-        // Vamos usar uma abordagem mais segura: calcular offset baseado no tamanho
-        // Assumindo que indicators[key] está alinhado ao fim
+        // O MACD é especial porque combina duas EMAs e um Signal.
+        // Padrão (12, 26, 9):
+        // 1. Slow EMA (26) começa a existir no índice 25.
+        // 2. Signal (9) precisa de mais 8 valores sobre o MACD.
+        // Offset Total = 26 + 9 - 1 = 34 velas de aquecimento.
         
-        // Vamos simplificar: Se a lib devolve array alinhado pelo fim:
-        const arr = macdRes;
-        const realIndex = index - (100000); // Isto é complexo sem saber o tamanho total.
+        const offset = 34; // Ajustado para configurações padrão (12, 26, 9)
         
-        // TRUQUE SEGURO:
-        // Como calculámos para TODOS os closes:
-        // Array Indicator Tamanho = Total Closes - Periodo + 1
-        // Valor na vela 'i' = Indicator[i - (Periodo - 1)] ou algo similar.
-        
-        // Para evitar bugs de índice, vamos usar o valor mais recente disponível se o índice for inválido,
-        // mas num backtest sério isto tem de ser exato.
-        
-        // Correção para este exemplo: 
-        // Vamos assumir que 'calculateIndicators' já devolveu arrays alinhados (com nulls no inicio)
-        // OU recalculamos aqui o offset.
-        // Padrão TA.js: Remove os periodos iniciais.
-        
-        const key = `${rule.indicator}_${rule.period}`;
-        const data = indicators[key] || indicators['MACD_STD'];
-        if (!data) return 0;
+        const macdResults = indicators['MACD_STD'];
+        if (!macdResults) return 0;
 
-        // Offset do MACD é tipicamente 26 (slow period)
-        const period = rule.indicator === 'MACD' ? 26 : rule.period;
-        const arrayIndex = index - period + 1; // Ajuste aproximado comum
-        
-        if (arrayIndex < 0 || arrayIndex >= data.length) return 0;
+        // O índice no array do indicador é o índice atual MENOS o aquecimento
+        const arrayIndex = index - offset;
 
-        if (rule.indicator === 'MACD') return data[arrayIndex]?.histogram || 0;
-        return data[arrayIndex];
+        // Se ainda não temos dados suficientes (estamos nas primeiras velas), retorna 0
+        if (arrayIndex < 0 || arrayIndex >= macdResults.length) return 0;
+
+        // Retornamos o histograma, que é o gatilho mais comum
+        return macdResults[arrayIndex]?.histogram || 0;
     }
 
+    // Para indicadores simples (RSI, SMA, EMA)
     const key = `${rule.indicator}_${rule.period}`;
     const data = indicators[key];
-    if (!data) return 0;
-    
-    // Ajuste de índice para SMA/RSI/EMA
-    const arrayIndex = index - rule.period; 
-    // Nota: TA.js behavior: RSI(14) returns array of length N-14. 
-    // Index 0 of RSI corresponds to Index 14 of Closes.
-    
-    if (arrayIndex < 0) return 0;
+
+    if (!data) {
+        // Fallback de segurança se o indicador não tiver sido calculado
+        return 0;
+    }
+
+    // O offset é exatamente o período do indicador
+    const arrayIndex = index - rule.period;
+
+    // Verificação de limites
+    if (arrayIndex < 0 || arrayIndex >= data.length) return 0;
+
     return data[arrayIndex];
   }
 

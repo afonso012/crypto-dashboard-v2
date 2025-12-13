@@ -168,7 +168,7 @@ export class AiOptimizerService {
              
              // Função de Fitness com penalizações
              let adjustedFitness = fitness;
-             if(metrics.profitFactor < 1) adjustedFitness -= 100;
+             if (metrics.profitFactor < 1.1) adjustedFitness -= 200;
 
              results.push({ 
                  gene, 
@@ -235,14 +235,22 @@ export class AiOptimizerService {
   private generateRandomGene(): StrategyGene {
     const numEntry = Math.floor(Math.random() * 3) + 1;
     const numExit = Math.floor(Math.random() * 2);
+
     return {
       entryRules: Array.from({ length: numEntry }, () => this.generateRandomRule()),
       exitRules: Array.from({ length: numExit }, () => this.generateRandomRule()),
-      stopLossPct: (Math.random() * 0.05) + 0.02, // 2% a 7% SL
-      takeProfitPct: (Math.random() * 0.15) + 0.03, // 3% a 18% TP
+      
+      // Gestão de Risco Aleatória (Otimizável)
+      stopLossPct: (Math.random() * 0.05) + 0.02, // 2% a 7%
+      takeProfitPct: (Math.random() * 0.15) + 0.03, // 3% a 18%
+
+      // 🔥 RESTRIÇÕES DE MERCADO (Fixas - A realidade não muda)
+      // 0.1% de taxa (padrão Binance Spot)
+      feePct: 0.001, 
+      // 0.05% de slippage (estimativa conservadora para pares líquidos)
+      slippagePct: 0.0005 
     };
   }
-
   private generateRandomRule(): StrategyRule {
     const types = [IndicatorType.RSI, IndicatorType.MACD, IndicatorType.SMA, IndicatorType.EMA];
     const indicator = types[Math.floor(Math.random() * types.length)];
