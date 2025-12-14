@@ -3,14 +3,24 @@ export enum IndicatorType {
   MACD = 'MACD',
   SMA = 'SMA',
   EMA = 'EMA',
+  ADX = 'ADX' // 🔥 NOVO
 }
 
 export enum ComparisonOperator {
   GREATER_THAN = '>',
   LESS_THAN = '<',
-  CROSS_OVER = 'CROSS_OVER', // 🔥 NOVO: Cruzamento é mais forte que apenas > ou <
+  CROSS_OVER = 'CROSS_OVER',
   CROSS_UNDER = 'CROSS_UNDER',
 }
+
+// ⚡ A GRELHA INSTITUCIONAL (Partilhada)
+export const INDICATOR_GRID = {
+  RSI_PERIODS: [14, 21],
+  EMA_PERIODS: [9, 21, 50, 100, 200],
+  SMA_PERIODS: [20, 50, 200],
+  ATR_PERIODS: [14],
+  ADX_PERIODS: [14] // 🔥 NOVO
+};
 
 export interface StrategyRule {
   indicator: IndicatorType;
@@ -21,7 +31,7 @@ export interface StrategyRule {
 }
 
 export interface StrategyGene {
-  // Regras separadas para Long (Compra) e Short (Venda a Descoberto)
+  // Regras
   entryRulesLong: StrategyRule[];
   entryRulesShort: StrategyRule[];
   
@@ -33,13 +43,15 @@ export interface StrategyGene {
   stopLossPct: number;
   atrMultiplier: number;
   atrPeriod: number;
+  
   takeProfitPct: number;
   
-  // 🔥 NOVO: Move o stop para o preço de entrada após X% de lucro
+  // Proteção
   breakEvenPct: number; 
 
   // Filtros
-  trendFilter: boolean; // Se true: Long só > EMA200, Short só < EMA200
+  trendFilter: boolean;
+  adxMin: number; // 🔥 NOVO: O TypeScript já não vai reclamar
 
   // Custos
   slippagePct: number;
@@ -54,14 +66,7 @@ export interface SimulationResult {
     trades: number;
     winRate: number;
     drawdown: number;
-    sharpe: number;   // 🔥 NOVO
-    sortino: number;  // 🔥 NOVO
+    sharpe: number;
+    sortino: number;
   };
 }
-
-export const INDICATOR_GRID = {
-  RSI_PERIODS: [14, 21, 28],      // Curto, Médio, Longo
-  EMA_PERIODS: [9, 21, 50, 200],  // As médias móveis mais respeitadas
-  MACD_SETTINGS: ['STD'],         // Standard (12, 26, 9)
-  ATR_PERIODS: [14],              // Padrão de indústria
-};

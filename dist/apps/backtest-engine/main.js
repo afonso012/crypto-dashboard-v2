@@ -166,10 +166,11 @@ const typeorm_2 = __webpack_require__(/*! typeorm */ "typeorm");
 const kline_entity_1 = __webpack_require__(/*! ./entities/kline.entity */ "./apps/backtest-engine/src/entities/kline.entity.ts");
 const TA = __webpack_require__(/*! technicalindicators */ "technicalindicators");
 const INDICATOR_GRID = {
-    RSI_PERIODS: [14, 21, 28],
-    EMA_PERIODS: [9, 21, 50, 200],
+    RSI_PERIODS: [14, 21],
+    EMA_PERIODS: [9, 21, 50, 100, 200],
     SMA_PERIODS: [20, 50, 200],
-    ATR_PERIODS: [14]
+    ATR_PERIODS: [14],
+    ADX_PERIODS: [14]
 };
 let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineService {
     constructor(klineRepo) {
@@ -212,26 +213,14 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
     }
     preComputeAllIndicators(closes, highs, lows) {
         const computed = {};
-        INDICATOR_GRID.RSI_PERIODS.forEach(p => {
-            computed[`RSI_${p}`] = TA.RSI.calculate({ period: p, values: closes });
+        INDICATOR_GRID.RSI_PERIODS.forEach(p => computed[`RSI_${p}`] = TA.RSI.calculate({ period: p, values: closes }));
+        INDICATOR_GRID.EMA_PERIODS.forEach(p => computed[`EMA_${p}`] = TA.EMA.calculate({ period: p, values: closes }));
+        INDICATOR_GRID.SMA_PERIODS.forEach(p => computed[`SMA_${p}`] = TA.SMA.calculate({ period: p, values: closes }));
+        INDICATOR_GRID.ATR_PERIODS.forEach(p => computed[`ATR_${p}`] = TA.ATR.calculate({ period: p, high: highs, low: lows, close: closes }));
+        INDICATOR_GRID.ADX_PERIODS.forEach(p => {
+            computed[`ADX_${p}`] = TA.ADX.calculate({ period: p, high: highs, low: lows, close: closes });
         });
-        INDICATOR_GRID.EMA_PERIODS.forEach(p => {
-            computed[`EMA_${p}`] = TA.EMA.calculate({ period: p, values: closes });
-        });
-        INDICATOR_GRID.SMA_PERIODS.forEach(p => {
-            computed[`SMA_${p}`] = TA.SMA.calculate({ period: p, values: closes });
-        });
-        INDICATOR_GRID.ATR_PERIODS.forEach(p => {
-            computed[`ATR_${p}`] = TA.ATR.calculate({ period: p, high: highs, low: lows, close: closes });
-        });
-        const macd = TA.MACD.calculate({
-            values: closes,
-            fastPeriod: 12,
-            slowPeriod: 26,
-            signalPeriod: 9,
-            SimpleMAOscillator: false,
-            SimpleMASignal: false
-        });
+        const macd = TA.MACD.calculate({ values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, SimpleMAOscillator: false, SimpleMASignal: false });
         computed['MACD_STD'] = macd;
         return computed;
     }
@@ -239,134 +228,165 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
         const { closes, highs, lows, times } = data;
         const len = closes.length;
         let balance = initialCapital;
+        let peakBalance = initialCapital;
         let position = null;
         const trades = [];
         const equityCurve = [{ date: new Date(times[0] * 1000), balance }];
         const returnsVector = [];
         const RISK_PER_TRADE = 0.02;
+        const CIRCUIT_BREAKER_DD = 0.15;
         for (let i = 200; i < len; i++) {
             const currentPrice = closes[i];
             const high = highs[i];
             const low = lows[i];
-            const fee = strategy.feePct ?? 0.001;
-            const slippage = strategy.slippagePct ?? 0.0005;
+            const currentDate = new Date(times[i] * 1000);
+            if (balance > peakBalance)
+                peakBalance = balance;
+            const currentDD = (peakBalance - balance) / peakBalance;
+            const isCircuitBreakerTripped = currentDD > CIRCUIT_BREAKER_DD;
             const trendEmaArr = indicators['EMA_200'];
             const trendEma = trendEmaArr ? trendEmaArr[i - 200] : 0;
             const atrArr = indicators[`ATR_${strategy.atrPeriod || 14}`];
             const atrValue = atrArr ? atrArr[i - (strategy.atrPeriod || 14)] : 0;
+            const adxArr = indicators['ADX_14'];
+            const adxValue = adxArr ? adxArr[i - 14]?.adx : 0;
             if (!position) {
+                if (isCircuitBreakerTripped) {
+                    if (i % 60 === 0)
+                        equityCurve.push({ date: currentDate, balance });
+                    continue;
+                }
+                const minAdx = strategy.adxMin || 20;
+                if (adxValue < minAdx) {
+                    if (i % 60 === 0)
+                        equityCurve.push({ date: currentDate, balance });
+                    continue;
+                }
                 const isBullish = strategy.trendFilter ? (currentPrice > trendEma) : true;
                 const isBearish = strategy.trendFilter ? (currentPrice < trendEma) : true;
-                let entryPrice = 0;
-                let stopDistance = 0;
-                let size = 0;
+                const effectiveAtr = atrValue > 0 ? atrValue : currentPrice * 0.02;
+                const stopDist = effectiveAtr * (strategy.atrMultiplier || 2);
+                const riskAmt = balance * RISK_PER_TRADE;
                 if (isBullish && this.checkRules(i, currentPrice, strategy.entryRulesLong, indicators)) {
-                    entryPrice = currentPrice * (1 + slippage);
-                    const effectiveAtr = atrValue > 0 ? atrValue : entryPrice * 0.02;
-                    stopDistance = effectiveAtr * (strategy.atrMultiplier || 2);
-                    const riskAmount = balance * RISK_PER_TRADE;
-                    size = riskAmount / stopDistance;
-                    const maxBuyingPower = balance / entryPrice;
-                    if (size > maxBuyingPower)
-                        size = maxBuyingPower;
+                    const entryPrice = currentPrice * (1 + (strategy.slippagePct || 0.0005));
+                    let size = riskAmt / stopDist;
+                    if (size * entryPrice > balance)
+                        size = balance / entryPrice;
                     position = { side: 'LONG', entryPrice, size, entryIndex: i, initialAtr: effectiveAtr };
                 }
                 else if (isBearish && this.checkRules(i, currentPrice, strategy.entryRulesShort, indicators)) {
-                    entryPrice = currentPrice * (1 - slippage);
-                    const effectiveAtr = atrValue > 0 ? atrValue : entryPrice * 0.02;
-                    stopDistance = effectiveAtr * (strategy.atrMultiplier || 2);
-                    const riskAmount = balance * RISK_PER_TRADE;
-                    size = riskAmount / stopDistance;
-                    const maxBuyingPower = balance / entryPrice;
-                    if (size > maxBuyingPower)
-                        size = maxBuyingPower;
+                    const entryPrice = currentPrice * (1 - (strategy.slippagePct || 0.0005));
+                    let size = riskAmt / stopDist;
+                    if (size * entryPrice > balance)
+                        size = balance / entryPrice;
                     position = { side: 'SHORT', entryPrice, size, entryIndex: i, initialAtr: effectiveAtr };
                 }
             }
             else {
-                let exitPrice = 0;
-                let reason = '';
-                let slPrice = 0, tpPrice = 0;
-                if (position.side === 'LONG') {
-                    if (position.isBreakEvenActive)
-                        slPrice = position.entryPrice * (1 + fee);
-                    else if (strategy.stopLossType === 'ATR')
-                        slPrice = position.entryPrice - (position.initialAtr * (strategy.atrMultiplier || 2));
-                    else
-                        slPrice = position.entryPrice * (1 - strategy.stopLossPct);
-                    tpPrice = position.entryPrice * (1 + strategy.takeProfitPct);
-                    if (strategy.breakEvenPct && !position.isBreakEvenActive) {
-                        if (high >= position.entryPrice * (1 + strategy.breakEvenPct))
-                            position.isBreakEvenActive = true;
-                    }
-                    if (low <= slPrice) {
-                        exitPrice = slPrice;
-                        reason = 'STOP_LOSS';
-                    }
-                    else if (high >= tpPrice) {
-                        exitPrice = tpPrice;
-                        reason = 'TAKE_PROFIT';
-                    }
-                }
-                else {
-                    if (position.isBreakEvenActive)
-                        slPrice = position.entryPrice * (1 - fee);
-                    else if (strategy.stopLossType === 'ATR')
-                        slPrice = position.entryPrice + (position.initialAtr * (strategy.atrMultiplier || 2));
-                    else
-                        slPrice = position.entryPrice * (1 + strategy.stopLossPct);
-                    tpPrice = position.entryPrice * (1 - strategy.takeProfitPct);
-                    if (strategy.breakEvenPct && !position.isBreakEvenActive) {
-                        if (low <= position.entryPrice * (1 - strategy.breakEvenPct))
-                            position.isBreakEvenActive = true;
-                    }
-                    if (high >= slPrice) {
-                        exitPrice = slPrice;
-                        reason = 'STOP_LOSS';
-                    }
-                    else if (low <= tpPrice) {
-                        exitPrice = tpPrice;
-                        reason = 'TAKE_PROFIT';
-                    }
-                }
-                if (exitPrice > 0) {
-                    let realExitPrice = 0;
-                    if (position.side === 'LONG') {
-                        realExitPrice = exitPrice * (1 - slippage);
-                        if (reason === 'STOP_LOSS')
-                            realExitPrice = exitPrice * (1 - (slippage * 2));
-                        const gross = position.size * realExitPrice;
-                        const net = gross * (1 - fee);
-                        balance = balance - (position.size * position.entryPrice) + net;
-                    }
-                    else {
-                        realExitPrice = exitPrice * (1 + slippage);
-                        if (reason === 'STOP_LOSS')
-                            realExitPrice = exitPrice * (1 + (slippage * 2));
-                        const initialVal = position.size * position.entryPrice;
-                        const buyBack = position.size * realExitPrice;
-                        const fees = (initialVal * fee) + (buyBack * fee);
-                        balance += (initialVal - buyBack - fees);
-                    }
-                    const pnl = balance - equityCurve[equityCurve.length - 1].balance;
-                    const roiPct = pnl / balance * 100;
-                    returnsVector.push(roiPct);
-                    trades.push({
-                        entryDate: new Date(times[position.entryIndex] * 1000),
-                        exitDate: new Date(times[i] * 1000),
-                        side: position.side,
-                        entryPrice: position.entryPrice,
-                        exitPrice: realExitPrice,
-                        roi: roiPct,
-                        reason
-                    });
+                const result = this.processExitLogic(i, position, strategy, high, low, currentPrice, balance, times, indicators);
+                if (result) {
+                    balance = result.newBalance;
+                    returnsVector.push(result.roi);
+                    trades.push(result.trade);
                     position = null;
                 }
             }
             if (i % 60 === 0)
-                equityCurve.push({ date: new Date(times[i] * 1000), balance });
+                equityCurve.push({ date: currentDate, balance: position ? balance : balance });
         }
         return this.calculateStats(balance, initialCapital, trades, returnsVector, equityCurve);
+    }
+    processExitLogic(i, position, strategy, high, low, currentPrice, balance, times, indicators) {
+        const fee = strategy.feePct ?? 0.001;
+        const slippage = strategy.slippagePct ?? 0.0005;
+        let exitPrice = 0, reason = '', slPrice = 0, tpPrice = 0;
+        if (position.side === 'LONG') {
+            if (position.isBreakEvenActive)
+                slPrice = position.entryPrice * (1 + fee);
+            else if (strategy.stopLossType === 'ATR')
+                slPrice = position.entryPrice - (position.initialAtr * (strategy.atrMultiplier || 2));
+            else
+                slPrice = position.entryPrice * (1 - strategy.stopLossPct);
+            tpPrice = position.entryPrice * (1 + strategy.takeProfitPct);
+            if (strategy.breakEvenPct && !position.isBreakEvenActive) {
+                if (high >= position.entryPrice * (1 + strategy.breakEvenPct))
+                    position.isBreakEvenActive = true;
+            }
+            if (low <= slPrice) {
+                exitPrice = slPrice;
+                reason = 'STOP_LOSS';
+            }
+            else if (high >= tpPrice) {
+                exitPrice = tpPrice;
+                reason = 'TAKE_PROFIT';
+            }
+            else if (strategy.exitRulesLong && this.checkRules(i, currentPrice, strategy.exitRulesLong, indicators)) {
+                exitPrice = currentPrice;
+                reason = 'EXIT_RULE';
+            }
+        }
+        else {
+            if (position.isBreakEvenActive)
+                slPrice = position.entryPrice * (1 - fee);
+            else if (strategy.stopLossType === 'ATR')
+                slPrice = position.entryPrice + (position.initialAtr * (strategy.atrMultiplier || 2));
+            else
+                slPrice = position.entryPrice * (1 + strategy.stopLossPct);
+            tpPrice = position.entryPrice * (1 - strategy.takeProfitPct);
+            if (strategy.breakEvenPct && !position.isBreakEvenActive) {
+                if (low <= position.entryPrice * (1 - strategy.breakEvenPct))
+                    position.isBreakEvenActive = true;
+            }
+            if (high >= slPrice) {
+                exitPrice = slPrice;
+                reason = 'STOP_LOSS';
+            }
+            else if (low <= tpPrice) {
+                exitPrice = tpPrice;
+                reason = 'TAKE_PROFIT';
+            }
+            else if (strategy.exitRulesShort && this.checkRules(i, currentPrice, strategy.exitRulesShort, indicators)) {
+                exitPrice = currentPrice;
+                reason = 'EXIT_RULE';
+            }
+        }
+        if (exitPrice > 0) {
+            let realExitPrice = 0;
+            let newBalance = balance;
+            if (position.side === 'LONG') {
+                realExitPrice = exitPrice * (1 - slippage);
+                if (reason === 'STOP_LOSS')
+                    realExitPrice = exitPrice * (1 - (slippage * 2));
+                const gross = position.size * realExitPrice;
+                const net = gross * (1 - fee);
+                newBalance = balance - (position.size * position.entryPrice) + net;
+            }
+            else {
+                realExitPrice = exitPrice * (1 + slippage);
+                if (reason === 'STOP_LOSS')
+                    realExitPrice = exitPrice * (1 + (slippage * 2));
+                const initialVal = position.size * position.entryPrice;
+                const buyBack = position.size * realExitPrice;
+                const fees = (initialVal * fee) + (buyBack * fee);
+                newBalance = balance + (initialVal - buyBack - fees);
+            }
+            const pnl = newBalance - balance;
+            const roi = (pnl / balance) * 100;
+            return {
+                newBalance,
+                roi,
+                trade: {
+                    entryDate: new Date(times[position.entryIndex] * 1000),
+                    exitDate: new Date(times[i] * 1000),
+                    side: position.side,
+                    entryPrice: position.entryPrice,
+                    exitPrice: realExitPrice,
+                    roi: roi,
+                    reason
+                }
+            };
+        }
+        return null;
     }
     checkRules(index, currentPrice, rules, indicators) {
         if (!rules || rules.length === 0)
@@ -376,6 +396,11 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
             if (rule.indicator === 'MACD') {
                 const arr = indicators['MACD_STD'];
                 val = (arr && arr[index - 34]) ? arr[index - 34].histogram : 0;
+            }
+            else if (rule.indicator === 'ADX') {
+                const key = `ADX_${rule.period}`;
+                const arr = indicators[key];
+                val = (arr && arr[index - rule.period]) ? arr[index - rule.period].adx : 0;
             }
             else {
                 const key = `${rule.indicator}_${rule.period}`;

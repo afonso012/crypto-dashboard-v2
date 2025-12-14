@@ -139,7 +139,7 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
         this.API_URL = process.env.API_URL || 'http://api-server:8081/strategies';
     }
     async mineStrategy(symbol, maxAttempts = 10) {
-        this.logger.log(`⛏️ INICIAR MINERAÇÃO INSTITUCIONAL para ${symbol} (Tentativas: ${maxAttempts})...`);
+        this.logger.log(`⛏️ INICIAR MINERAÇÃO HÍBRIDA para ${symbol}...`);
         const hoje = new Date();
         const dataInicio = new Date();
         dataInicio.setMonth(hoje.getMonth() - 18);
@@ -147,54 +147,22 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             this.logger.log(`🔄 Tentativa ${i}/${maxAttempts}...`);
             const champion = await this.runOptimization(dataInicio, hoje, symbol);
             if (champion) {
-                this.logger.log(`💎 SUCESSO! Estratégia encontrada na tentativa ${i}.`);
-                this.logger.log(`📈 ROI VALIDADO: ${champion.stats.roi.toFixed(2)}% | Sortino: ${champion.stats.sortino.toFixed(2)}`);
+                this.logger.log(`💎 SUCESSO! ROI: ${champion.stats.roi.toFixed(2)}% | DD: ${champion.stats.drawdown.toFixed(2)}%`);
                 return champion;
             }
-            else {
-                this.logger.warn(`⚠️ Tentativa ${i} falhou. A reiniciar evolução...`);
-            }
         }
-        this.logger.error('❌ FIM: O mercado está difícil. Nenhuma estratégia robusta encontrada hoje.');
+        this.logger.error('❌ Nenhuma estratégia robusta encontrada.');
         return null;
     }
-    getClassicStrategies() {
-        const seeds = [];
-        seeds.push({
-            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 14, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 30, weight: 1 }],
-            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 14, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 70, weight: 1 }],
-            exitRulesLong: [], exitRulesShort: [],
-            stopLossType: 'FIXED', stopLossPct: 0.02, atrMultiplier: 0, atrPeriod: 0,
-            takeProfitPct: 0.04, breakEvenPct: 0.015, trendFilter: false,
-            feePct: 0.001, slippagePct: 0.0005
-        });
-        seeds.push({
-            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.EMA, period: 50, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 'PRICE', weight: 1 }],
-            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.EMA, period: 50, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 'PRICE', weight: 1 }],
-            exitRulesLong: [], exitRulesShort: [],
-            stopLossType: 'ATR', stopLossPct: 0, atrMultiplier: 3, atrPeriod: 14,
-            takeProfitPct: 0.15, breakEvenPct: 0.02, trendFilter: true,
-            feePct: 0.001, slippagePct: 0.0005
-        });
-        seeds.push({
-            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 7, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 20, weight: 1 }],
-            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 7, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 80, weight: 1 }],
-            exitRulesLong: [], exitRulesShort: [],
-            stopLossType: 'FIXED', stopLossPct: 0.01, atrMultiplier: 0, atrPeriod: 0,
-            takeProfitPct: 0.02, breakEvenPct: 0.005, trendFilter: false,
-            feePct: 0.001, slippagePct: 0.0005
-        });
-        return seeds;
-    }
     async runOptimization(startDate, endDate, symbol) {
-        this.logger.log(`🚀 A iniciar WFA (Long/Short) para ${symbol}...`);
+        this.logger.log(`🚀 WFA em curso...`);
         const trainWindowMonths = 3;
         const testWindowMonths = 1;
         let currentStart = new Date(startDate);
-        let totalWalkForwardProfit = 0;
-        const performanceLog = [];
-        let fullTradeHistory = [];
-        let bestGeneSoFar = null;
+        let totalProfit = 0;
+        const log = [];
+        let fullHistory = [];
+        let bestGene = null;
         while (true) {
             const trainEnd = new Date(currentStart);
             trainEnd.setMonth(trainEnd.getMonth() + trainWindowMonths);
@@ -203,48 +171,70 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             if (testEnd > endDate)
                 break;
             this.logger.log(`📅 TREINO: [${trainEnd.toISOString().slice(0, 7)}] -> TESTE: [${testEnd.toISOString().slice(0, 7)}]`);
-            const bestOfPeriod = await this.optimizeForPeriod(currentStart, trainEnd, symbol);
-            if (!bestOfPeriod) {
-                this.logger.warn('⚠️ Nenhuma estratégia sobreviveu ao treino. A saltar mês...');
+            const best = await this.optimizeForPeriod(currentStart, trainEnd, symbol);
+            if (!best) {
+                this.logger.warn('⚠️ Sem estratégia viável no treino.');
                 currentStart.setMonth(currentStart.getMonth() + testWindowMonths);
                 continue;
             }
-            const validationResult = await this.runBacktest(bestOfPeriod.gene, trainEnd, testEnd, symbol);
-            if (validationResult) {
-                this.logger.log(`📊 OOS Resultado: ROI ${validationResult.totalReturnPct.toFixed(2)}% | DD ${validationResult.maxDrawdownPct.toFixed(2)}%`);
-                totalWalkForwardProfit += validationResult.totalReturnPct;
-                performanceLog.push({
-                    period: `${trainEnd.toISOString().slice(0, 7)}`,
-                    roi: validationResult.totalReturnPct,
-                    drawdown: validationResult.maxDrawdownPct
-                });
-                if (validationResult.history) {
-                    fullTradeHistory = [...fullTradeHistory, ...validationResult.history];
-                }
-                bestGeneSoFar = bestOfPeriod.gene;
+            const res = await this.runBacktest(best.gene, trainEnd, testEnd, symbol);
+            if (res) {
+                this.logger.log(`📊 OOS Resultado: ROI ${res.totalReturnPct.toFixed(2)}% | DD ${res.maxDrawdownPct.toFixed(2)}%`);
+                totalProfit += res.totalReturnPct;
+                log.push({ period: testEnd.toISOString().slice(0, 7), roi: res.totalReturnPct, dd: res.maxDrawdownPct });
+                if (res.history)
+                    fullHistory = [...fullHistory, ...res.history];
+                bestGene = best.gene;
             }
             currentStart.setMonth(currentStart.getMonth() + testWindowMonths);
         }
-        this.logger.log(`💰 Lucro Total WFA: ${totalWalkForwardProfit.toFixed(2)}%`);
-        console.table(performanceLog);
-        const isProfitable = totalWalkForwardProfit > 5;
-        const maxDD = Math.max(...performanceLog.map(p => p.drawdown));
-        if (isProfitable && maxDD < 30 && bestGeneSoFar) {
-            const avgRoi = totalWalkForwardProfit / (performanceLog.length || 1);
-            await this.saveStrategy(bestGeneSoFar, symbol, totalWalkForwardProfit, avgRoi, fullTradeHistory);
-            return { gene: bestGeneSoFar, stats: { roi: totalWalkForwardProfit, sortino: 0, trades: 0, winRate: 0, drawdown: maxDD } };
+        const maxDD = Math.max(...log.map(p => p.dd));
+        const isViable = totalProfit > 0 && maxDD < 20;
+        if (isViable && bestGene) {
+            await this.saveStrategy(bestGene, symbol, totalProfit, maxDD, fullHistory);
+            return { gene: bestGene, stats: { roi: totalProfit, drawdown: maxDD, sortino: 0, trades: 0, winRate: 0 } };
         }
-        else {
-            return null;
-        }
+        return null;
+    }
+    getClassicStrategies() {
+        const seeds = [];
+        seeds.push({
+            entryRulesLong: [],
+            entryRulesShort: [
+                { indicator: genetic_bot_types_1.IndicatorType.RSI, period: 14, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 70, weight: 1 },
+                { indicator: genetic_bot_types_1.IndicatorType.EMA, period: 50, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 'PRICE', weight: 1 }
+            ],
+            exitRulesLong: [], exitRulesShort: [],
+            stopLossType: 'ATR', stopLossPct: 0, atrMultiplier: 2, atrPeriod: 14,
+            takeProfitPct: 0.08, breakEvenPct: 0.02, trendFilter: false, adxMin: 15,
+            feePct: 0.001, slippagePct: 0.0005
+        });
+        seeds.push({
+            entryRulesLong: [
+                { indicator: genetic_bot_types_1.IndicatorType.RSI, period: 14, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 40, weight: 1 },
+            ],
+            entryRulesShort: [],
+            exitRulesLong: [], exitRulesShort: [],
+            stopLossType: 'ATR', stopLossPct: 0, atrMultiplier: 2.5, atrPeriod: 14,
+            takeProfitPct: 0.12, breakEvenPct: 0.015, trendFilter: true, adxMin: 20,
+            feePct: 0.001, slippagePct: 0.0005
+        });
+        seeds.push({
+            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.SMA, period: 20, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 'PRICE', weight: 1 }],
+            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.SMA, period: 20, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 'PRICE', weight: 1 }],
+            exitRulesLong: [], exitRulesShort: [],
+            stopLossType: 'FIXED', stopLossPct: 0.02, atrMultiplier: 0, atrPeriod: 0,
+            takeProfitPct: 0.05, breakEvenPct: 0.01, trendFilter: false, adxMin: 25,
+            feePct: 0.001, slippagePct: 0.0005
+        });
+        return seeds;
     }
     async optimizeForPeriod(start, end, symbol) {
-        const POPULATION_SIZE = 100;
-        const GENERATIONS = 20;
+        const POPULATION_SIZE = 60;
+        const GENERATIONS = 15;
         const seeds = this.getClassicStrategies();
         const randomCount = POPULATION_SIZE - seeds.length;
-        const randomPopulation = Array.from({ length: randomCount }, () => this.generateRandomGene());
-        let population = [...seeds, ...randomPopulation];
+        let population = [...seeds, ...Array.from({ length: randomCount }, () => this.generateRandomGene())];
         let bestResult = null;
         for (let generation = 1; generation <= GENERATIONS; generation++) {
             const results = [];
@@ -252,18 +242,7 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
                 const data = await this.runBacktest(gene, start, end, symbol);
                 if (data) {
                     const fitness = this.calculateFitness(data);
-                    results.push({
-                        gene,
-                        fitness,
-                        stats: {
-                            roi: data.totalReturnPct,
-                            trades: data.totalTrades,
-                            winRate: data.winRate,
-                            drawdown: data.maxDrawdownPct,
-                            sharpe: 0,
-                            sortino: 0
-                        }
-                    });
+                    results.push({ gene, fitness, stats: { roi: data.totalReturnPct, trades: data.totalTrades, winRate: data.winRate, drawdown: data.maxDrawdownPct, sharpe: 0, sortino: 0 } });
                 }
             }
             if (results.length === 0)
@@ -271,21 +250,17 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             results.sort((a, b) => b.fitness - a.fitness);
             if (!bestResult || results[0].fitness > bestResult.fitness)
                 bestResult = results[0];
-            const survivors = results.slice(0, 5).map(r => r.gene);
+            const survivors = results.slice(0, 10).map(r => r.gene);
             const children = [];
             while (children.length < POPULATION_SIZE) {
                 const parent = survivors[Math.floor(Math.random() * survivors.length)];
                 const child = JSON.parse(JSON.stringify(parent));
-                if (Math.random() < 0.4) {
-                    const isLong = Math.random() > 0.5;
-                    const rules = isLong ? child.entryRulesLong : child.entryRulesShort;
-                    if (rules && rules.length > 0) {
-                        const idx = Math.floor(Math.random() * rules.length);
-                        rules[idx] = this.generateRandomRule();
-                    }
+                if (Math.random() < 0.3) {
+                    if (child.adxMin > 10)
+                        child.adxMin -= 2;
                 }
-                if (Math.random() < 0.2) {
-                    child.stopLossPct = (Math.random() * 0.05) + 0.01;
+                if (Math.random() < 0.3) {
+                    child.breakEvenPct = Math.random() * 0.02 + 0.005;
                 }
                 children.push(child);
             }
@@ -294,59 +269,50 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
         return bestResult;
     }
     calculateFitness(data) {
-        if (data.totalTrades < 5)
-            return -1000;
+        if (data.totalTrades < 3)
+            return -100;
         if (data.totalReturnPct <= 0)
             return data.totalReturnPct;
-        const downside = data.downsideDeviation || 1;
-        const sortino = data.totalReturnPct / downside;
-        return (sortino * 50) + (data.winRate * 0.5);
+        const dd = data.maxDrawdownPct === 0 ? 0.5 : data.maxDrawdownPct;
+        const score = data.totalReturnPct / dd;
+        return score;
     }
     generateRandomGene() {
         const numEntry = Math.floor(Math.random() * 2) + 1;
         return {
             entryRulesLong: Array.from({ length: numEntry }, () => this.generateRandomRule()),
             entryRulesShort: Array.from({ length: numEntry }, () => this.generateRandomRule()),
-            exitRulesLong: [],
-            exitRulesShort: [],
+            exitRulesLong: [], exitRulesShort: [],
             stopLossType: Math.random() > 0.5 ? 'ATR' : 'FIXED',
-            stopLossPct: [0.01, 0.015, 0.02, 0.025, 0.03][Math.floor(Math.random() * 5)],
+            stopLossPct: [0.015, 0.02, 0.03][Math.floor(Math.random() * 3)],
             atrMultiplier: [1.5, 2.0, 2.5, 3.0][Math.floor(Math.random() * 4)],
             atrPeriod: 14,
-            takeProfitPct: [0.03, 0.05, 0.08, 0.12][Math.floor(Math.random() * 4)],
+            takeProfitPct: [0.04, 0.06, 0.10, 0.15][Math.floor(Math.random() * 4)],
             breakEvenPct: [0.01, 0.015, 0.02][Math.floor(Math.random() * 3)],
-            trendFilter: Math.random() > 0.3,
+            trendFilter: Math.random() > 0.4,
+            adxMin: [10, 15, 20][Math.floor(Math.random() * 3)],
             feePct: 0.001, slippagePct: 0.0005
         };
     }
     generateRandomRule() {
-        const types = [genetic_bot_types_1.IndicatorType.RSI, genetic_bot_types_1.IndicatorType.SMA, genetic_bot_types_1.IndicatorType.EMA, genetic_bot_types_1.IndicatorType.MACD];
-        const indicator = types[Math.floor(Math.random() * types.length)];
-        const operators = [genetic_bot_types_1.ComparisonOperator.GREATER_THAN, genetic_bot_types_1.ComparisonOperator.LESS_THAN];
-        const op = operators[Math.floor(Math.random() * operators.length)];
+        const indicator = ['RSI', 'SMA', 'EMA'][Math.floor(Math.random() * 3)];
+        const op = [genetic_bot_types_1.ComparisonOperator.GREATER_THAN, genetic_bot_types_1.ComparisonOperator.LESS_THAN][Math.floor(Math.random() * 2)];
         let value = 0;
         let period = 14;
-        if (indicator === genetic_bot_types_1.IndicatorType.RSI) {
-            value = [20, 25, 30, 70, 75, 80][Math.floor(Math.random() * 6)];
+        if (indicator === 'RSI') {
+            value = [25, 30, 35, 65, 70, 75][Math.floor(Math.random() * 6)];
             period = genetic_bot_types_1.INDICATOR_GRID.RSI_PERIODS[Math.floor(Math.random() * genetic_bot_types_1.INDICATOR_GRID.RSI_PERIODS.length)];
-        }
-        else if (indicator === genetic_bot_types_1.IndicatorType.MACD) {
-            value = 0;
         }
         else {
             value = 'PRICE';
             period = genetic_bot_types_1.INDICATOR_GRID.EMA_PERIODS[Math.floor(Math.random() * genetic_bot_types_1.INDICATOR_GRID.EMA_PERIODS.length)];
         }
-        return { indicator, period, operator: op, value, weight: 1 };
+        return { indicator: indicator, period, operator: op, value, weight: 1 };
     }
     async runBacktest(gene, start, end, symbol) {
         try {
             const response = await (0, rxjs_1.firstValueFrom)(this.httpService.post(this.BACKTEST_URL, {
-                symbol: symbol,
-                startDate: start,
-                endDate: end,
-                initialCapital: 1000,
-                strategy: gene
+                symbol, startDate: start, endDate: end, initialCapital: 1000, strategy: gene
             }));
             return response.data;
         }
@@ -354,38 +320,17 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             return null;
         }
     }
-    async saveStrategy(gene, symbol, totalRoi, avgRoi, history) {
+    async saveStrategy(gene, symbol, roi, dd, history) {
         try {
-            const wins = history.filter(t => t.roi > 0).length;
-            const winRate = history.length > 0 ? (wins / history.length) * 100 : 0;
-            let peak = 1000;
-            let currentBalance = 1000;
-            let maxDrawdown = 0;
-            for (const trade of history) {
-                currentBalance = currentBalance * (1 + (trade.roi / 100));
-                if (currentBalance > peak)
-                    peak = currentBalance;
-                const dd = (peak - currentBalance) / peak;
-                if (dd > maxDrawdown)
-                    maxDrawdown = dd;
-            }
-            const apiPayload = {
-                name: `Alpha-Gen-${new Date().getTime().toString().slice(-4)}`,
-                symbol: symbol,
-                config: gene,
-                roi: totalRoi,
-                drawdown: maxDrawdown * 100,
-                winRate: winRate,
-                trades: history.length,
-                trainStartDate: new Date(),
-                trainEndDate: new Date(),
-                tradeHistory: history
-            };
-            await (0, rxjs_1.firstValueFrom)(this.httpService.post(this.API_URL, apiPayload));
-            this.logger.log(`💾 ESTRATÉGIA GUARDADA! (WinRate: ${winRate.toFixed(1)}% | DD: ${(maxDrawdown * 100).toFixed(1)}%)`);
+            await (0, rxjs_1.firstValueFrom)(this.httpService.post(this.API_URL, {
+                name: `Institucional-${new Date().getTime().toString().slice(-4)}`,
+                symbol, config: gene, roi, drawdown: dd, winRate: 0, trades: history.length, tradeHistory: history,
+                trainStartDate: new Date(), trainEndDate: new Date()
+            }));
+            this.logger.log(`💾 ESTRATÉGIA SALVA COM SUCESSO!`);
         }
         catch (e) {
-            this.logger.error('Erro ao guardar: ' + e.message);
+            this.logger.error('Erro ao salvar estratégia');
         }
     }
 };
@@ -413,6 +358,7 @@ var IndicatorType;
     IndicatorType["MACD"] = "MACD";
     IndicatorType["SMA"] = "SMA";
     IndicatorType["EMA"] = "EMA";
+    IndicatorType["ADX"] = "ADX";
 })(IndicatorType || (exports.IndicatorType = IndicatorType = {}));
 var ComparisonOperator;
 (function (ComparisonOperator) {
@@ -422,10 +368,11 @@ var ComparisonOperator;
     ComparisonOperator["CROSS_UNDER"] = "CROSS_UNDER";
 })(ComparisonOperator || (exports.ComparisonOperator = ComparisonOperator = {}));
 exports.INDICATOR_GRID = {
-    RSI_PERIODS: [14, 21, 28],
-    EMA_PERIODS: [9, 21, 50, 200],
-    MACD_SETTINGS: ['STD'],
+    RSI_PERIODS: [14, 21],
+    EMA_PERIODS: [9, 21, 50, 100, 200],
+    SMA_PERIODS: [20, 50, 200],
     ATR_PERIODS: [14],
+    ADX_PERIODS: [14]
 };
 
 
