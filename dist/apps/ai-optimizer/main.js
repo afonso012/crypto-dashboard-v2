@@ -84,6 +84,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiOptimizerModule = void 0;
 const common_1 = __webpack_require__(/*! @nestjs/common */ "@nestjs/common");
 const axios_1 = __webpack_require__(/*! @nestjs/axios */ "@nestjs/axios");
+const config_1 = __webpack_require__(/*! @nestjs/config */ "@nestjs/config");
 const ai_optimizer_controller_1 = __webpack_require__(/*! ./ai-optimizer.controller */ "./apps/ai-optimizer/src/ai-optimizer.controller.ts");
 const ai_optimizer_service_1 = __webpack_require__(/*! ./ai-optimizer.service */ "./apps/ai-optimizer/src/ai-optimizer.service.ts");
 let AiOptimizerModule = class AiOptimizerModule {
@@ -91,7 +92,13 @@ let AiOptimizerModule = class AiOptimizerModule {
 exports.AiOptimizerModule = AiOptimizerModule;
 exports.AiOptimizerModule = AiOptimizerModule = __decorate([
     (0, common_1.Module)({
-        imports: [axios_1.HttpModule],
+        imports: [
+            config_1.ConfigModule.forRoot({
+                isGlobal: true,
+                envFilePath: '.env',
+            }),
+            axios_1.HttpModule
+        ],
         controllers: [ai_optimizer_controller_1.AiOptimizerController],
         providers: [ai_optimizer_service_1.AiOptimizerService],
     })
@@ -132,7 +139,7 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
         this.API_URL = process.env.API_URL || 'http://api-server:8081/strategies';
     }
     async mineStrategy(symbol, maxAttempts = 10) {
-        this.logger.log(`⛏️ INICIAR MINERAÇÃO MANUAL para ${symbol} (Tentativas Máx: ${maxAttempts})...`);
+        this.logger.log(`⛏️ INICIAR MINERAÇÃO INSTITUCIONAL para ${symbol} (Tentativas: ${maxAttempts})...`);
         const hoje = new Date();
         const dataInicio = new Date();
         dataInicio.setMonth(hoje.getMonth() - 18);
@@ -140,19 +147,19 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             this.logger.log(`🔄 Tentativa ${i}/${maxAttempts}...`);
             const champion = await this.runOptimization(dataInicio, hoje, symbol);
             if (champion) {
-                this.logger.log(`💎 SUCESSO! Estratégia vencedora encontrada na tentativa ${i}.`);
-                this.logger.log(`📈 ROI VALIDADO: ${champion.stats.roi.toFixed(2)}%`);
+                this.logger.log(`💎 SUCESSO! Estratégia encontrada na tentativa ${i}.`);
+                this.logger.log(`📈 ROI VALIDADO: ${champion.stats.roi.toFixed(2)}% | Sortino: ${champion.stats.sortino.toFixed(2)}`);
                 return champion;
             }
             else {
-                this.logger.warn(`⚠️ Tentativa ${i} falhou (Rejeitada pelo WFA). A tentar outra vez...`);
+                this.logger.warn(`⚠️ Tentativa ${i} falhou. A reiniciar evolução...`);
             }
         }
-        this.logger.error('❌ FIM: Esgotámos as tentativas. O mercado está difícil hoje.');
+        this.logger.error('❌ FIM: O mercado está difícil. Nenhuma estratégia robusta encontrada hoje.');
         return null;
     }
     async runOptimization(startDate, endDate, symbol) {
-        this.logger.log(`🚀 A iniciar Walk-Forward Analysis (WFA) para ${symbol}...`);
+        this.logger.log(`🚀 A iniciar WFA (Long/Short) para ${symbol}...`);
         const trainWindowMonths = 3;
         const testWindowMonths = 1;
         let currentStart = new Date(startDate);
@@ -167,64 +174,64 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             testEnd.setMonth(testEnd.getMonth() + testWindowMonths);
             if (testEnd > endDate)
                 break;
-            this.logger.log(`\n📅 CICLO: Treino [${trainEnd.toISOString().slice(0, 7)}] -> Validação [${testEnd.toISOString().slice(0, 7)}]`);
+            this.logger.log(`📅 TREINO: [${trainEnd.toISOString().slice(0, 7)}] -> TESTE: [${testEnd.toISOString().slice(0, 7)}]`);
             const bestOfPeriod = await this.optimizeForPeriod(currentStart, trainEnd, symbol);
             if (!bestOfPeriod) {
-                this.logger.warn('⚠️ Nenhuma estratégia viável neste período de treino.');
+                this.logger.warn('⚠️ Nenhuma estratégia sobreviveu ao treino. A saltar mês...');
                 currentStart.setMonth(currentStart.getMonth() + testWindowMonths);
                 continue;
             }
             const validationResult = await this.runBacktest(bestOfPeriod.gene, trainEnd, testEnd, symbol);
             if (validationResult) {
-                this.logger.log(`📊 Resultado Real (OOS): ROI ${validationResult.totalReturnPct.toFixed(2)}% | DD ${validationResult.maxDrawdownPct.toFixed(2)}%`);
+                this.logger.log(`📊 OOS Resultado: ROI ${validationResult.totalReturnPct.toFixed(2)}% | DD ${validationResult.maxDrawdownPct.toFixed(2)}%`);
                 totalWalkForwardProfit += validationResult.totalReturnPct;
                 performanceLog.push({
                     period: `${trainEnd.toISOString().slice(0, 7)}`,
                     roi: validationResult.totalReturnPct,
                     drawdown: validationResult.maxDrawdownPct
                 });
-                if (validationResult.history && Array.isArray(validationResult.history)) {
+                if (validationResult.history) {
                     fullTradeHistory = [...fullTradeHistory, ...validationResult.history];
                 }
                 bestGeneSoFar = bestOfPeriod.gene;
             }
             currentStart.setMonth(currentStart.getMonth() + testWindowMonths);
         }
-        this.logger.log('🏁 WFA Concluído!');
-        this.logger.log(`💰 Retorno Acumulado (Líquido): ${totalWalkForwardProfit.toFixed(2)}%`);
+        this.logger.log(`💰 Lucro Total WFA: ${totalWalkForwardProfit.toFixed(2)}%`);
         console.table(performanceLog);
-        const failedMonths = performanceLog.filter(p => p.roi < -2).length;
-        if (totalWalkForwardProfit > 10 && failedMonths <= 10 && bestGeneSoFar) {
-            this.logger.log('✅ APROVADO: Estratégia robusta encontrada.');
+        const isProfitable = totalWalkForwardProfit > 5;
+        const maxDD = Math.max(...performanceLog.map(p => p.drawdown));
+        if (isProfitable && maxDD < 30 && bestGeneSoFar) {
             const avgRoi = totalWalkForwardProfit / (performanceLog.length || 1);
             await this.saveStrategy(bestGeneSoFar, symbol, totalWalkForwardProfit, avgRoi, fullTradeHistory);
-            return {
-                gene: bestGeneSoFar,
-                stats: { roi: totalWalkForwardProfit }
-            };
+            return { gene: bestGeneSoFar, stats: { roi: totalWalkForwardProfit, sortino: 0, trades: 0, winRate: 0, drawdown: maxDD } };
         }
         else {
-            this.logger.error(`❌ REJEITADO: Lucro ${totalWalkForwardProfit.toFixed(2)}% insuficiente ou instável.`);
             return null;
         }
     }
     async optimizeForPeriod(start, end, symbol) {
-        let population = Array.from({ length: 15 }, () => this.generateRandomGene());
+        const POPULATION_SIZE = 20;
+        const GENERATIONS = 5;
+        let population = Array.from({ length: POPULATION_SIZE }, () => this.generateRandomGene());
         let bestResult = null;
-        for (let generation = 1; generation <= 5; generation++) {
+        for (let generation = 1; generation <= GENERATIONS; generation++) {
             const results = [];
             for (const gene of population) {
                 const data = await this.runBacktest(gene, start, end, symbol);
                 if (data) {
                     const fitness = this.calculateFitness(data);
-                    const metrics = this.calculateAdvancedMetrics(data.history);
-                    let adjustedFitness = fitness;
-                    if (metrics.profitFactor < 1.1)
-                        adjustedFitness -= 200;
                     results.push({
                         gene,
-                        fitness: adjustedFitness,
-                        stats: { roi: data.totalReturnPct, trades: data.totalTrades, winRate: data.winRate, drawdown: data.maxDrawdownPct }
+                        fitness,
+                        stats: {
+                            roi: data.totalReturnPct,
+                            trades: data.totalTrades,
+                            winRate: data.winRate,
+                            drawdown: data.maxDrawdownPct,
+                            sharpe: 0,
+                            sortino: 0
+                        }
                     });
                 }
             }
@@ -235,12 +242,19 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
                 bestResult = results[0];
             const survivors = results.slice(0, 5).map(r => r.gene);
             const children = [];
-            while (children.length < 15) {
+            while (children.length < POPULATION_SIZE) {
                 const parent = survivors[Math.floor(Math.random() * survivors.length)];
                 const child = JSON.parse(JSON.stringify(parent));
-                if (Math.random() < 0.4 && child.entryRules.length > 0) {
-                    const idx = Math.floor(Math.random() * child.entryRules.length);
-                    child.entryRules[idx] = this.generateRandomRule();
+                if (Math.random() < 0.4) {
+                    const isLong = Math.random() > 0.5;
+                    const rules = isLong ? child.entryRulesLong : child.entryRulesShort;
+                    if (rules && rules.length > 0) {
+                        const idx = Math.floor(Math.random() * rules.length);
+                        rules[idx] = this.generateRandomRule();
+                    }
+                }
+                if (Math.random() < 0.2) {
+                    child.stopLossPct = (Math.random() * 0.05) + 0.01;
                 }
                 children.push(child);
             }
@@ -251,33 +265,26 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
     calculateFitness(data) {
         if (data.totalTrades < 5)
             return -1000;
-        const risk = data.maxDrawdownPct === 0 ? 0.1 : data.maxDrawdownPct;
-        return (data.totalReturnPct / risk) * 100;
-    }
-    calculateAdvancedMetrics(trades) {
-        if (!trades || trades.length === 0) {
-            return { sortino: 0, sqn: 0, winRate: 0, profitFactor: 0 };
-        }
-        let grossWin = 0;
-        let grossLoss = 0;
-        trades.forEach((t) => {
-            const pnl = t.roi;
-            if (pnl > 0)
-                grossWin += pnl;
-            else
-                grossLoss += Math.abs(pnl);
-        });
-        const profitFactor = grossLoss === 0 ? grossWin : grossWin / grossLoss;
-        return { sortino: 0, sqn: 0, winRate: 0, profitFactor };
+        if (data.totalReturnPct <= 0)
+            return data.totalReturnPct;
+        const downside = data.downsideDeviation || 1;
+        const sortino = data.totalReturnPct / downside;
+        return (sortino * 50) + (data.winRate * 0.5);
     }
     generateRandomGene() {
-        const numEntry = Math.floor(Math.random() * 3) + 1;
-        const numExit = Math.floor(Math.random() * 2);
+        const numEntry = Math.floor(Math.random() * 2) + 1;
         return {
-            entryRules: Array.from({ length: numEntry }, () => this.generateRandomRule()),
-            exitRules: Array.from({ length: numExit }, () => this.generateRandomRule()),
-            stopLossPct: (Math.random() * 0.05) + 0.02,
-            takeProfitPct: (Math.random() * 0.15) + 0.03,
+            entryRulesLong: Array.from({ length: numEntry }, () => this.generateRandomRule()),
+            entryRulesShort: Array.from({ length: numEntry }, () => this.generateRandomRule()),
+            exitRulesLong: [],
+            exitRulesShort: [],
+            stopLossType: Math.random() > 0.6 ? 'ATR' : 'FIXED',
+            stopLossPct: (Math.random() * 0.04) + 0.01,
+            atrMultiplier: (Math.random() * 2.5) + 1.5,
+            atrPeriod: 14,
+            takeProfitPct: (Math.random() * 0.10) + 0.02,
+            breakEvenPct: (Math.random() * 0.03) + 0.01,
+            trendFilter: Math.random() > 0.2,
             feePct: 0.001,
             slippagePct: 0.0005
         };
@@ -318,10 +325,6 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
         }
     }
     async saveStrategy(gene, symbol, totalRoi, avgRoi, history) {
-        this.logger.log(`💾 A analisar histórico... (Total: ${history?.length})`);
-        if (history && history.length > 0) {
-            this.logger.log(`🔎 TRADE OBJECT: ${JSON.stringify(history[0])}`);
-        }
         try {
             const wins = history.filter(t => t.roi > 0).length;
             const winRate = history.length > 0 ? (wins / history.length) * 100 : 0;
@@ -330,16 +333,14 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             let maxDrawdown = 0;
             for (const trade of history) {
                 currentBalance = currentBalance * (1 + (trade.roi / 100));
-                if (currentBalance > peak) {
+                if (currentBalance > peak)
                     peak = currentBalance;
-                }
                 const dd = (peak - currentBalance) / peak;
-                if (dd > maxDrawdown) {
+                if (dd > maxDrawdown)
                     maxDrawdown = dd;
-                }
             }
             const apiPayload = {
-                name: `WFA-Pro-${new Date().getTime()}`,
+                name: `Alpha-Gen-${new Date().getTime().toString().slice(-4)}`,
                 symbol: symbol,
                 config: gene,
                 roi: totalRoi,
@@ -351,7 +352,7 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
                 tradeHistory: history
             };
             await (0, rxjs_1.firstValueFrom)(this.httpService.post(this.API_URL, apiPayload));
-            this.logger.log(`💾 Estratégia WFA guardada! (WinRate: ${winRate.toFixed(1)}% | DD: ${(maxDrawdown * 100).toFixed(1)}%)`);
+            this.logger.log(`💾 ESTRATÉGIA GUARDADA! (WinRate: ${winRate.toFixed(1)}% | DD: ${(maxDrawdown * 100).toFixed(1)}%)`);
         }
         catch (e) {
             this.logger.error('Erro ao guardar: ' + e.message);
@@ -375,7 +376,7 @@ exports.AiOptimizerService = AiOptimizerService = AiOptimizerService_1 = __decor
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ActionType = exports.ComparisonOperator = exports.IndicatorType = void 0;
+exports.ComparisonOperator = exports.IndicatorType = void 0;
 var IndicatorType;
 (function (IndicatorType) {
     IndicatorType["RSI"] = "RSI";
@@ -387,13 +388,9 @@ var ComparisonOperator;
 (function (ComparisonOperator) {
     ComparisonOperator["GREATER_THAN"] = ">";
     ComparisonOperator["LESS_THAN"] = "<";
+    ComparisonOperator["CROSS_OVER"] = "CROSS_OVER";
+    ComparisonOperator["CROSS_UNDER"] = "CROSS_UNDER";
 })(ComparisonOperator || (exports.ComparisonOperator = ComparisonOperator = {}));
-var ActionType;
-(function (ActionType) {
-    ActionType["BUY_SIGNAL"] = "BUY";
-    ActionType["SELL_SIGNAL"] = "SELL";
-    ActionType["WAIT"] = "WAIT";
-})(ActionType || (exports.ActionType = ActionType = {}));
 
 
 /***/ }),
@@ -415,6 +412,16 @@ module.exports = require("@nestjs/axios");
 /***/ ((module) => {
 
 module.exports = require("@nestjs/common");
+
+/***/ }),
+
+/***/ "@nestjs/config":
+/*!*********************************!*\
+  !*** external "@nestjs/config" ***!
+  \*********************************/
+/***/ ((module) => {
+
+module.exports = require("@nestjs/config");
 
 /***/ }),
 

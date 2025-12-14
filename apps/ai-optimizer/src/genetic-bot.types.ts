@@ -1,4 +1,3 @@
-// --- Enumerações (O Vocabulário) ---
 export enum IndicatorType {
   RSI = 'RSI',
   MACD = 'MACD',
@@ -9,15 +8,10 @@ export enum IndicatorType {
 export enum ComparisonOperator {
   GREATER_THAN = '>',
   LESS_THAN = '<',
+  CROSS_OVER = 'CROSS_OVER', // 🔥 NOVO: Cruzamento é mais forte que apenas > ou <
+  CROSS_UNDER = 'CROSS_UNDER',
 }
 
-export enum ActionType {
-  BUY_SIGNAL = 'BUY',
-  SELL_SIGNAL = 'SELL',
-  WAIT = 'WAIT'
-}
-
-// --- Estrutura da Regra ---
 export interface StrategyRule {
   indicator: IndicatorType;
   period: number;
@@ -26,12 +20,28 @@ export interface StrategyRule {
   weight: number;
 }
 
-// --- O Novo DNA ---
 export interface StrategyGene {
-  entryRules: StrategyRule[];
-  exitRules: StrategyRule[];
+  // Regras separadas para Long (Compra) e Short (Venda a Descoberto)
+  entryRulesLong: StrategyRule[];
+  entryRulesShort: StrategyRule[];
+  
+  exitRulesLong: StrategyRule[];
+  exitRulesShort: StrategyRule[];
+  
+  // Gestão de Risco
+  stopLossType: 'FIXED' | 'ATR'; 
   stopLossPct: number;
+  atrMultiplier: number;
+  atrPeriod: number;
   takeProfitPct: number;
+  
+  // 🔥 NOVO: Move o stop para o preço de entrada após X% de lucro
+  breakEvenPct: number; 
+
+  // Filtros
+  trendFilter: boolean; // Se true: Long só > EMA200, Short só < EMA200
+
+  // Custos
   slippagePct: number;
   feePct: number;
 }
@@ -44,5 +54,7 @@ export interface SimulationResult {
     trades: number;
     winRate: number;
     drawdown: number;
+    sharpe: number;   // 🔥 NOVO
+    sortino: number;  // 🔥 NOVO
   };
 }

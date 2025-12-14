@@ -24,7 +24,7 @@ services:
       dockerfile: ./apps/api-server/Dockerfile
     restart: always
     environment:
-      DB_HOST: ${DB_HOST}
+      DB_HOST: db
       DB_PORT: ${DB_PORT}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -42,7 +42,7 @@ services:
       dockerfile: ./apps/data-collector/Dockerfile
     restart: always
     environment:
-      DB_HOST: ${DB_HOST}
+      DB_HOST: db
       DB_PORT: ${DB_PORT}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -98,7 +98,7 @@ services:
     ports:
       - "3002:3002"
     environment:
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT}
       - DB_USERNAME=${DB_USERNAME}
       - DB_PASSWORD=${DB_PASSWORD}

@@ -169,83 +169,171 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
     constructor(klineRepo) {
         this.klineRepo = klineRepo;
         this.logger = new common_1.Logger(BacktestEngineService_1.name);
+        this.dataCache = new Map();
     }
     async runBacktest(params) {
-        const klines = await this.klineRepo.find({
-            where: {
-                symbol: params.symbol,
-                time: (0, typeorm_2.Between)(Math.floor(params.startDate.getTime() / 1000), Math.floor(params.endDate.getTime() / 1000)),
-            },
-            order: { time: 'ASC' },
-        });
-        if (klines.length < 200) {
-            return { error: 'Dados insuficientes para calcular indicadores (min 200 velas).' };
+        const cacheKey = `${params.symbol}_${Math.floor(params.startDate.getTime() / 1000)}_${Math.floor(params.endDate.getTime() / 1000)}`;
+        let klines;
+        if (this.dataCache.has(cacheKey)) {
+            klines = this.dataCache.get(cacheKey);
         }
-        const closes = klines.map(k => parseFloat(k.close));
-        const indicators = this.calculateIndicators(closes, params.strategy);
+        else {
+            this.logger.debug(`📉 Fetching DB: ${params.symbol}`);
+            klines = await this.klineRepo.find({
+                where: {
+                    symbol: params.symbol,
+                    time: (0, typeorm_2.Between)(Math.floor(params.startDate.getTime() / 1000), Math.floor(params.endDate.getTime() / 1000)),
+                },
+                order: { time: 'ASC' },
+            });
+            this.dataCache.set(cacheKey, klines);
+            if (this.dataCache.size > 50)
+                this.dataCache.clear();
+        }
+        if (klines.length < 200)
+            return { error: 'Dados insuficientes.' };
+        const closes = klines.map(k => typeof k.close === 'string' ? parseFloat(k.close) : k.close);
+        const highs = klines.map(k => typeof k.high === 'string' ? parseFloat(k.high) : k.high);
+        const lows = klines.map(k => typeof k.low === 'string' ? parseFloat(k.low) : k.low);
+        const indicators = this.calculateIndicators(closes, params.strategy, highs, lows);
         let balance = params.initialCapital;
         let position = null;
         const trades = [];
         const equityCurve = [{ date: new Date(klines[0].time * 1000), balance }];
+        const returnsVector = [];
         for (let i = 200; i < klines.length; i++) {
             const candle = klines[i];
-            const currentPrice = parseFloat(candle.close);
+            const currentPrice = closes[i];
+            const low = lows[i];
+            const high = highs[i];
             const currentDate = new Date(candle.time * 1000);
+            const fee = params.strategy.feePct ?? 0.001;
+            const slippage = params.strategy.slippagePct ?? 0.0005;
+            const atrValue = indicators['ATR'] ? indicators['ATR'][i - (params.strategy.atrPeriod || 14)] : 0;
+            const trendEma = indicators['TREND_EMA'] ? indicators['TREND_EMA'][i - 200] : 0;
             if (!position) {
-                if (this.checkEntryRules(i, currentPrice, params.strategy.entryRules, indicators)) {
-                    const size = (balance * (1 - this.TRADING_FEE)) / currentPrice;
+                const isBullish = params.strategy.trendFilter ? (currentPrice > trendEma) : true;
+                const isBearish = params.strategy.trendFilter ? (currentPrice < trendEma) : true;
+                if (isBullish && this.checkEntryRules(i, currentPrice, params.strategy.entryRulesLong, indicators)) {
+                    const entryPrice = currentPrice * (1 + slippage);
+                    const size = (balance * (1 - fee)) / entryPrice;
                     position = {
-                        entryPrice: currentPrice,
-                        size: size,
-                        entryIndex: i
+                        side: 'LONG',
+                        entryPrice, size, entryIndex: i,
+                        initialAtr: atrValue
+                    };
+                }
+                else if (isBearish && this.checkEntryRules(i, currentPrice, params.strategy.entryRulesShort, indicators)) {
+                    const entryPrice = currentPrice * (1 - slippage);
+                    const size = (balance * (1 - fee)) / entryPrice;
+                    position = {
+                        side: 'SHORT',
+                        entryPrice, size, entryIndex: i,
+                        initialAtr: atrValue
                     };
                 }
             }
             else {
                 let exitPrice = 0;
                 let reason = '';
-                const slPrice = position.entryPrice * (1 - params.strategy.stopLossPct);
-                const tpPrice = position.entryPrice * (1 + params.strategy.takeProfitPct);
-                const low = parseFloat(candle.low);
-                const high = parseFloat(candle.high);
-                if (low <= slPrice) {
-                    exitPrice = slPrice;
-                    reason = 'STOP_LOSS';
+                let slPrice = 0;
+                let tpPrice = 0;
+                if (position.side === 'LONG') {
+                    if (position.isBreakEvenActive) {
+                        slPrice = position.entryPrice * (1 + fee);
+                    }
+                    else if (params.strategy.stopLossType === 'ATR' && position.initialAtr > 0) {
+                        slPrice = position.entryPrice - (position.initialAtr * (params.strategy.atrMultiplier || 2));
+                    }
+                    else {
+                        slPrice = position.entryPrice * (1 - params.strategy.stopLossPct);
+                    }
+                    tpPrice = position.entryPrice * (1 + params.strategy.takeProfitPct);
+                    if (params.strategy.breakEvenPct && !position.isBreakEvenActive) {
+                        if (high >= position.entryPrice * (1 + params.strategy.breakEvenPct)) {
+                            position.isBreakEvenActive = true;
+                        }
+                    }
+                    if (low <= slPrice) {
+                        exitPrice = slPrice;
+                        reason = 'STOP_LOSS';
+                    }
+                    else if (high >= tpPrice) {
+                        exitPrice = tpPrice;
+                        reason = 'TAKE_PROFIT';
+                    }
+                    else if (params.strategy.exitRulesLong && this.checkExitRules(i, currentPrice, params.strategy.exitRulesLong, indicators)) {
+                        exitPrice = currentPrice;
+                        reason = 'EXIT_RULE';
+                    }
                 }
-                else if (high >= tpPrice) {
-                    exitPrice = tpPrice;
-                    reason = 'TAKE_PROFIT';
-                }
-                else if (this.checkExitRules(i, currentPrice, params.strategy.exitRules, indicators)) {
-                    exitPrice = currentPrice;
-                    reason = 'EXIT_RULE';
+                else {
+                    if (position.isBreakEvenActive) {
+                        slPrice = position.entryPrice * (1 - fee);
+                    }
+                    else if (params.strategy.stopLossType === 'ATR' && position.initialAtr > 0) {
+                        slPrice = position.entryPrice + (position.initialAtr * (params.strategy.atrMultiplier || 2));
+                    }
+                    else {
+                        slPrice = position.entryPrice * (1 + params.strategy.stopLossPct);
+                    }
+                    tpPrice = position.entryPrice * (1 - params.strategy.takeProfitPct);
+                    if (params.strategy.breakEvenPct && !position.isBreakEvenActive) {
+                        if (low <= position.entryPrice * (1 - params.strategy.breakEvenPct)) {
+                            position.isBreakEvenActive = true;
+                        }
+                    }
+                    if (high >= slPrice) {
+                        exitPrice = slPrice;
+                        reason = 'STOP_LOSS';
+                    }
+                    else if (low <= tpPrice) {
+                        exitPrice = tpPrice;
+                        reason = 'TAKE_PROFIT';
+                    }
+                    else if (params.strategy.exitRulesShort && this.checkExitRules(i, currentPrice, params.strategy.exitRulesShort, indicators)) {
+                        exitPrice = currentPrice;
+                        reason = 'EXIT_RULE';
+                    }
                 }
                 if (exitPrice > 0) {
-                    const fee = params.strategy.feePct ?? 0.001;
-                    const slippage = params.strategy.slippagePct ?? 0.0005;
-                    let realExitPrice = exitPrice * (1 - slippage);
-                    if (reason === 'STOP_LOSS') {
-                        realExitPrice = exitPrice * (1 - (slippage * 2));
+                    let pnl = 0;
+                    let realExitPrice = 0;
+                    if (position.side === 'LONG') {
+                        realExitPrice = exitPrice * (1 - slippage);
+                        if (reason === 'STOP_LOSS')
+                            realExitPrice = exitPrice * (1 - (slippage * 2));
+                        const grossValue = position.size * realExitPrice;
+                        const netValue = grossValue * (1 - fee);
+                        pnl = netValue - balance;
+                        balance = netValue;
                     }
-                    const grossValue = position.size * realExitPrice;
-                    const netValue = grossValue * (1 - fee);
-                    const profit = netValue - balance;
-                    const roiPct = ((netValue - balance) / balance) * 100;
-                    balance = netValue;
+                    else {
+                        realExitPrice = exitPrice * (1 + slippage);
+                        if (reason === 'STOP_LOSS')
+                            realExitPrice = exitPrice * (1 + (slippage * 2));
+                        const initialValue = position.size * position.entryPrice;
+                        const buyBackCost = position.size * realExitPrice;
+                        const totalFees = (initialValue * fee) + (buyBackCost * fee);
+                        pnl = initialValue - buyBackCost - totalFees;
+                        balance += pnl;
+                    }
+                    const roiPct = (pnl / (balance - pnl)) * 100;
+                    returnsVector.push(roiPct);
                     trades.push({
                         entryDate: new Date(klines[position.entryIndex].time * 1000),
                         exitDate: currentDate,
+                        side: position.side,
                         entryPrice: position.entryPrice,
-                        exitPrice: exitPrice,
+                        exitPrice: realExitPrice,
                         roi: roiPct,
                         reason
                     });
                     position = null;
                 }
             }
-            if (!position || i % 60 === 0) {
+            if (i % 60 === 0)
                 equityCurve.push({ date: currentDate, balance: position ? balance : balance });
-            }
         }
         const totalReturnPct = ((balance - params.initialCapital) / params.initialCapital) * 100;
         let peak = params.initialCapital;
@@ -260,6 +348,8 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
             if (dd > maxDrawdownPct)
                 maxDrawdownPct = dd;
         }
+        const negativeReturns = returnsVector.filter(r => r < 0);
+        const downsideDeviation = Math.sqrt(negativeReturns.reduce((acc, r) => acc + (r * r), 0) / (returnsVector.length || 1));
         const wins = trades.filter(t => t.roi > 0).length;
         const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
         return {
@@ -267,14 +357,20 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
             totalTrades: trades.length,
             maxDrawdownPct: maxDrawdownPct * 100,
             winRate,
+            downsideDeviation,
             finalBalance: balance,
             history: trades,
             equityCurve
         };
     }
-    calculateIndicators(closes, strategy) {
+    calculateIndicators(closes, strategy, highs, lows) {
         const indicators = {};
-        const rules = [...strategy.entryRules, ...strategy.exitRules];
+        const rules = [
+            ...strategy.entryRulesLong,
+            ...strategy.entryRulesShort,
+            ...(strategy.exitRulesLong || []),
+            ...(strategy.exitRulesShort || [])
+        ];
         rules.forEach(rule => {
             const key = `${rule.indicator}_${rule.period}`;
             if (indicators[key])
@@ -294,10 +390,21 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 });
             }
         });
+        if (strategy.trendFilter) {
+            indicators['TREND_EMA'] = TA.EMA.calculate({ period: 200, values: closes });
+        }
+        if (strategy.stopLossType === 'ATR' && highs && lows) {
+            indicators['ATR'] = TA.ATR.calculate({
+                period: strategy.atrPeriod || 14,
+                high: highs,
+                low: lows,
+                close: closes
+            });
+        }
         return indicators;
     }
     checkEntryRules(index, currentPrice, rules, indicators) {
-        if (rules.length === 0)
+        if (!rules || rules.length === 0)
             return true;
         return rules.every(rule => {
             const val = this.getIndicatorValue(index, rule, indicators);
@@ -306,7 +413,7 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
         });
     }
     checkExitRules(index, currentPrice, rules, indicators) {
-        if (rules.length === 0)
+        if (!rules || rules.length === 0)
             return false;
         return rules.some(rule => {
             const val = this.getIndicatorValue(index, rule, indicators);
@@ -321,24 +428,19 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
             if (!macdResults)
                 return 0;
             const arrayIndex = index - offset;
-            if (arrayIndex < 0 || arrayIndex >= macdResults.length)
-                return 0;
-            return macdResults[arrayIndex]?.histogram || 0;
+            return (arrayIndex >= 0 && arrayIndex < macdResults.length) ? macdResults[arrayIndex]?.histogram || 0 : 0;
         }
         const key = `${rule.indicator}_${rule.period}`;
         const data = indicators[key];
-        if (!data) {
+        if (!data)
             return 0;
-        }
         const arrayIndex = index - rule.period;
-        if (arrayIndex < 0 || arrayIndex >= data.length)
-            return 0;
-        return data[arrayIndex];
+        return (arrayIndex >= 0 && arrayIndex < data.length) ? data[arrayIndex] : 0;
     }
     compare(a, op, b) {
         switch (op) {
-            case '<': return a < b;
             case '>': return a > b;
+            case '<': return a < b;
             case '=': return Math.abs(a - b) < 0.0001;
             default: return false;
         }

@@ -7,40 +7,38 @@ import { StrategyGene, SimulationResult, StrategyRule, IndicatorType, Comparison
 export class AiOptimizerService {
   private readonly logger = new Logger(AiOptimizerService.name);
   
-  // Portas dos teus serviços (Backtest Engine e API Server)
+  // Lê do .env ou usa defaults
   private readonly BACKTEST_URL = process.env.BACKTEST_URL || 'http://backtest-engine:3002/backtest/run'; 
   private readonly API_URL = process.env.API_URL || 'http://api-server:8081/strategies';
 
   constructor(private readonly httpService: HttpService) {}
 
   // ===========================================================================
-  // ⛏️ MÉTODO PÚBLICO: MINERAÇÃO DE ESTRATÉGIAS (Loop de Persistência)
+  // ⛏️ MÉTODO PÚBLICO: MINERAÇÃO DE ESTRATÉGIAS
   // ===========================================================================
   async mineStrategy(symbol: string, maxAttempts: number = 10) {
-    this.logger.log(`⛏️ INICIAR MINERAÇÃO MANUAL para ${symbol} (Tentativas Máx: ${maxAttempts})...`);
+    this.logger.log(`⛏️ INICIAR MINERAÇÃO INSTITUCIONAL para ${symbol} (Tentativas: ${maxAttempts})...`);
 
-    // Definir a Janela de Treino Padrão (Últimos 18 Meses)
-    // Isto garante que a estratégia é relevante para o mercado atual
     const hoje = new Date();
     const dataInicio = new Date();
-    dataInicio.setMonth(hoje.getMonth() - 18); 
+    dataInicio.setMonth(hoje.getMonth() - 18); // Treinar nos últimos 18 meses
 
     for (let i = 1; i <= maxAttempts; i++) {
         this.logger.log(`🔄 Tentativa ${i}/${maxAttempts}...`);
         
-        // Executa o WFA. Se falhar, retorna null. Se passar, retorna o campeão.
+        // Executa o WFA
         const champion = await this.runOptimization(dataInicio, hoje, symbol);
 
         if (champion) {
-            this.logger.log(`💎 SUCESSO! Estratégia vencedora encontrada na tentativa ${i}.`);
-            this.logger.log(`📈 ROI VALIDADO: ${champion.stats.roi.toFixed(2)}%`);
-            return champion; // Encontrámos ouro! Retorna e para o loop.
+            this.logger.log(`💎 SUCESSO! Estratégia encontrada na tentativa ${i}.`);
+            this.logger.log(`📈 ROI VALIDADO: ${champion.stats.roi.toFixed(2)}% | Sortino: ${champion.stats.sortino.toFixed(2)}`);
+            return champion;
         } else {
-            this.logger.warn(`⚠️ Tentativa ${i} falhou (Rejeitada pelo WFA). A tentar outra vez...`);
+            this.logger.warn(`⚠️ Tentativa ${i} falhou. A reiniciar evolução...`);
         }
     }
 
-    this.logger.error('❌ FIM: Esgotámos as tentativas. O mercado está difícil hoje.');
+    this.logger.error('❌ FIM: O mercado está difícil. Nenhuma estratégia robusta encontrada hoje.');
     return null;
   }
 
@@ -48,155 +46,147 @@ export class AiOptimizerService {
   // 🚀 MÉTODO CENTRAL: WALK-FORWARD ANALYSIS (WFA)
   // ===========================================================================
   async runOptimization(startDate: Date, endDate: Date, symbol: string) {
-    this.logger.log(`🚀 A iniciar Walk-Forward Analysis (WFA) para ${symbol}...`);
+    this.logger.log(`🚀 A iniciar WFA (Long/Short) para ${symbol}...`);
 
-    // CONFIGURAÇÃO DO WFA (Janelas Deslizantes)
-    // Treino: 3 Meses | Teste: 1 Mês
+    // Configuração WFA
     const trainWindowMonths = 3;
     const testWindowMonths = 1;
 
     let currentStart = new Date(startDate);
     let totalWalkForwardProfit = 0;
     const performanceLog: any[] = [];
-    
-    // Vamos acumular o histórico de todas as trades de validação para o gráfico
     let fullTradeHistory: any[] = [];
-    
     let bestGeneSoFar: StrategyGene | null = null;
 
-    // LOOP WFA (Avança no tempo)
     while (true) {
-        // 1. Definir Datas das Janelas
+        // 1. Definir Janelas
         const trainEnd = new Date(currentStart);
         trainEnd.setMonth(trainEnd.getMonth() + trainWindowMonths);
 
         const testEnd = new Date(trainEnd);
         testEnd.setMonth(testEnd.getMonth() + testWindowMonths);
 
-        // Parar se ultrapassar a data final global
         if (testEnd > endDate) break;
 
-        this.logger.log(`\n📅 CICLO: Treino [${trainEnd.toISOString().slice(0,7)}] -> Validação [${testEnd.toISOString().slice(0,7)}]`);
+        this.logger.log(`📅 TREINO: [${trainEnd.toISOString().slice(0,7)}] -> TESTE: [${testEnd.toISOString().slice(0,7)}]`);
 
-        // 2. FASE DE OTIMIZAÇÃO (IN-SAMPLE)
-        // A AI treina no passado recente para encontrar a melhor config para este momento
+        // 2. OTIMIZAÇÃO (In-Sample)
         const bestOfPeriod = await this.optimizeForPeriod(currentStart, trainEnd, symbol);
         
         if (!bestOfPeriod) {
-            this.logger.warn('⚠️ Nenhuma estratégia viável neste período de treino.');
+            this.logger.warn('⚠️ Nenhuma estratégia sobreviveu ao treino. A saltar mês...');
             currentStart.setMonth(currentStart.getMonth() + testWindowMonths);
             continue;
         }
 
-        // 3. FASE DE VALIDAÇÃO (OUT-OF-SAMPLE)
-        // Testamos a estratégia no mês seguinte (que ela desconhece)
+        // 3. VALIDAÇÃO (Out-of-Sample)
         const validationResult = await this.runBacktest(bestOfPeriod.gene, trainEnd, testEnd, symbol);
         
         if (validationResult) {
-            this.logger.log(`📊 Resultado Real (OOS): ROI ${validationResult.totalReturnPct.toFixed(2)}% | DD ${validationResult.maxDrawdownPct.toFixed(2)}%`);
+            this.logger.log(`📊 OOS Resultado: ROI ${validationResult.totalReturnPct.toFixed(2)}% | DD ${validationResult.maxDrawdownPct.toFixed(2)}%`);
             
             totalWalkForwardProfit += validationResult.totalReturnPct;
             
-            // Log para tabela
             performanceLog.push({
                 period: `${trainEnd.toISOString().slice(0,7)}`,
                 roi: validationResult.totalReturnPct,
                 drawdown: validationResult.maxDrawdownPct
             });
 
-            // Guardar histórico real para o gráfico
-            if (validationResult.history && Array.isArray(validationResult.history)) {
+            if (validationResult.history) {
                 fullTradeHistory = [...fullTradeHistory, ...validationResult.history];
             }
 
-            // Atualizamos o "Campeão Atual"
             bestGeneSoFar = bestOfPeriod.gene;
         }
 
-        // 4. Avançar a Janela
         currentStart.setMonth(currentStart.getMonth() + testWindowMonths);
     }
 
     // --- ANÁLISE FINAL ---
-    this.logger.log('🏁 WFA Concluído!');
-    this.logger.log(`💰 Retorno Acumulado (Líquido): ${totalWalkForwardProfit.toFixed(2)}%`);
-    
-    // Tabela bonita no terminal
+    this.logger.log(`💰 Lucro Total WFA: ${totalWalkForwardProfit.toFixed(2)}%`);
     console.table(performanceLog);
 
-    // CRITÉRIOS DE APROVAÇÃO (Com tolerância a taxas)
-    // > 10% Lucro Total E Menos de 10 meses negativos (num período de 18 meses)
-    const failedMonths = performanceLog.filter(p => p.roi < -2).length; 
-
-    if (totalWalkForwardProfit > 10 && failedMonths <= 10 && bestGeneSoFar) {
-        this.logger.log('✅ APROVADO: Estratégia robusta encontrada.');
-        
+    // Critérios de Aceitação (Mais flexíveis para começar)
+    // ROI Positivo e Drawdown controlado
+    const isProfitable = totalWalkForwardProfit > 5; 
+    const maxDD = Math.max(...performanceLog.map(p => p.drawdown));
+    
+    if (isProfitable && maxDD < 30 && bestGeneSoFar) {
         const avgRoi = totalWalkForwardProfit / (performanceLog.length || 1);
-
-        // Guardar na API
         await this.saveStrategy(bestGeneSoFar, symbol, totalWalkForwardProfit, avgRoi, fullTradeHistory);
-
-        // Retorna o resultado para o Mineiro saber que teve sucesso
-        return { 
-            gene: bestGeneSoFar, 
-            stats: { roi: totalWalkForwardProfit } 
-        };
+        return { gene: bestGeneSoFar, stats: { roi: totalWalkForwardProfit, sortino: 0, trades: 0, winRate: 0, drawdown: maxDD } };
     } else {
-        this.logger.error(`❌ REJEITADO: Lucro ${totalWalkForwardProfit.toFixed(2)}% insuficiente ou instável.`);
-        return null; // Retorna null para tentar de novo
+        return null;
     }
   }
 
   // ===========================================================================
-  // 🧬 HELPER: OTIMIZADOR GENÉTICO (Para um período específico)
+  // 🧬 HELPER: OTIMIZADOR GENÉTICO (CORRIGIDO PARA LONG/SHORT)
   // ===========================================================================
   private async optimizeForPeriod(start: Date, end: Date, symbol: string): Promise<SimulationResult | null> {
-    // População pequena para ser rápido (WFA exige velocidade)
-    let population: StrategyGene[] = Array.from({ length: 15 }, () => this.generateRandomGene()); 
+    const POPULATION_SIZE = 20;
+    const GENERATIONS = 5; // Rápido para WFA
+
+    let population: StrategyGene[] = Array.from({ length: POPULATION_SIZE }, () => this.generateRandomGene()); 
     let bestResult: SimulationResult | null = null;
 
-    // 5 Gerações de Evolução
-    for (let generation = 1; generation <= 5; generation++) {
+    for (let generation = 1; generation <= GENERATIONS; generation++) {
       const results: SimulationResult[] = [];
       
+      // Avaliar cada indivíduo
       for (const gene of population) {
          const data = await this.runBacktest(gene, start, end, symbol);
          if (data) {
              const fitness = this.calculateFitness(data);
-             // Usar Profit Factor corrigido para evitar NaN
-             const metrics = this.calculateAdvancedMetrics(data.history);
-             
-             // Função de Fitness com penalizações
-             let adjustedFitness = fitness;
-             if (metrics.profitFactor < 1.1) adjustedFitness -= 200;
-
              results.push({ 
                  gene, 
-                 fitness: adjustedFitness, 
-                 stats: { roi: data.totalReturnPct, trades: data.totalTrades, winRate: data.winRate, drawdown: data.maxDrawdownPct } 
+                 fitness, 
+                 stats: { 
+                     roi: data.totalReturnPct, 
+                     trades: data.totalTrades, 
+                     winRate: data.winRate, 
+                     drawdown: data.maxDrawdownPct,
+                     sharpe: 0, 
+                     sortino: 0 
+                 } 
              });
          }
       }
       
       if (results.length === 0) continue;
       
-      // Ordenar por Fitness
+      // Seleção Natural
       results.sort((a, b) => b.fitness - a.fitness);
       if (!bestResult || results[0].fitness > bestResult.fitness) bestResult = results[0];
 
-      // Reprodução (Elitismo + Mutação)
-      const survivors = results.slice(0, 5).map(r => r.gene); // Top 5 sobrevivem
+      // Reprodução
+      const survivors = results.slice(0, 5).map(r => r.gene); 
       const children: StrategyGene[] = [];
       
-      while (children.length < 15) {
+      while (children.length < POPULATION_SIZE) {
+          // Copiar pai
           const parent = survivors[Math.floor(Math.random() * survivors.length)];
           const child = JSON.parse(JSON.stringify(parent));
           
-          // 40% chance de mutação
-          if (Math.random() < 0.4 && child.entryRules.length > 0) {
-             const idx = Math.floor(Math.random() * child.entryRules.length);
-             child.entryRules[idx] = this.generateRandomRule();
+          // 🔥 MUTAÇÃO CORRIGIDA (Suporta Long e Short)
+          if (Math.random() < 0.4) {
+             // 50/50 mudar regra de Long ou Short
+             const isLong = Math.random() > 0.5;
+             const rules = isLong ? child.entryRulesLong : child.entryRulesShort;
+             
+             // Mutar uma regra existente
+             if (rules && rules.length > 0) {
+                 const idx = Math.floor(Math.random() * rules.length);
+                 rules[idx] = this.generateRandomRule();
+             }
           }
+
+          // Mutar parâmetros de risco (Opcional)
+          if (Math.random() < 0.2) {
+              child.stopLossPct = (Math.random() * 0.05) + 0.01;
+          }
+
           children.push(child);
       }
       population = [...survivors, ...children];
@@ -205,52 +195,45 @@ export class AiOptimizerService {
   }
 
   // ===========================================================================
-  // 📐 HELPERS: CÁLCULOS E REGRAS
+  // 📐 HELPERS: LÓGICA E MATEMÁTICA
   // ===========================================================================
   
   private calculateFitness(data: any): number {
-    if (data.totalTrades < 5) return -1000; // Penaliza inatividade
-    
-    // Sharpe Ratio Simplificado: Retorno / Risco
-    const risk = data.maxDrawdownPct === 0 ? 0.1 : data.maxDrawdownPct;
-    return (data.totalReturnPct / risk) * 100;
-  }
+    if (data.totalTrades < 5) return -1000; 
+    if (data.totalReturnPct <= 0) return data.totalReturnPct; // Se perde dinheiro, fitness é negativo
 
-  private calculateAdvancedMetrics(trades: any[]) {
-    if (!trades || trades.length === 0) {
-      return { sortino: 0, sqn: 0, winRate: 0, profitFactor: 0 }; // Prevenir NaN
-    }
-    // (Cálculo simplificado para poupar espaço)
-    let grossWin = 0;
-    let grossLoss = 0;
-    trades.forEach((t: any) => {
-        const pnl = t.roi; // Assumindo ROI como proxy de PnL
-        if (pnl > 0) grossWin += pnl;
-        else grossLoss += Math.abs(pnl);
-    });
-    const profitFactor = grossLoss === 0 ? grossWin : grossWin / grossLoss;
-    return { sortino: 0, sqn: 0, winRate: 0, profitFactor };
+    // Fitness Híbrido: Sortino Ratio + Win Rate
+    // Queremos lucro estável (Sortino) e consistência (WinRate)
+    const downside = data.downsideDeviation || 1; 
+    const sortino = data.totalReturnPct / downside;
+    
+    return (sortino * 50) + (data.winRate * 0.5);
   }
 
   private generateRandomGene(): StrategyGene {
-    const numEntry = Math.floor(Math.random() * 3) + 1;
-    const numExit = Math.floor(Math.random() * 2);
+    const numEntry = Math.floor(Math.random() * 2) + 1;
 
     return {
-      entryRules: Array.from({ length: numEntry }, () => this.generateRandomRule()),
-      exitRules: Array.from({ length: numExit }, () => this.generateRandomRule()),
+      // DNA Híbrido: Regras para Long e Short
+      entryRulesLong: Array.from({ length: numEntry }, () => this.generateRandomRule()),
+      entryRulesShort: Array.from({ length: numEntry }, () => this.generateRandomRule()),
       
-      // Gestão de Risco Aleatória (Otimizável)
-      stopLossPct: (Math.random() * 0.05) + 0.02, // 2% a 7%
-      takeProfitPct: (Math.random() * 0.15) + 0.03, // 3% a 18%
+      exitRulesLong: [], 
+      exitRulesShort: [], 
+      
+      stopLossType: Math.random() > 0.6 ? 'ATR' : 'FIXED', 
+      stopLossPct: (Math.random() * 0.04) + 0.01, 
+      atrMultiplier: (Math.random() * 2.5) + 1.5,
+      atrPeriod: 14,
+      takeProfitPct: (Math.random() * 0.10) + 0.02, 
+      breakEvenPct: (Math.random() * 0.03) + 0.01, 
+      trendFilter: Math.random() > 0.2, // 80% ativo
 
-      // 🔥 RESTRIÇÕES DE MERCADO (Fixas - A realidade não muda)
-      // 0.1% de taxa (padrão Binance Spot)
       feePct: 0.001, 
-      // 0.05% de slippage (estimativa conservadora para pares líquidos)
       slippagePct: 0.0005 
     };
   }
+
   private generateRandomRule(): StrategyRule {
     const types = [IndicatorType.RSI, IndicatorType.MACD, IndicatorType.SMA, IndicatorType.EMA];
     const indicator = types[Math.floor(Math.random() * types.length)];
@@ -273,7 +256,7 @@ export class AiOptimizerService {
   }
 
   // ===========================================================================
-  // 🔌 HELPERS: CONEXÕES HTTP
+  // 🔌 HELPERS: CONEXÕES
   // ===========================================================================
 
   private async runBacktest(gene: StrategyGene, start: Date, end: Date, symbol: string): Promise<any> {
@@ -286,59 +269,46 @@ export class AiOptimizerService {
             strategy: gene
         }));
         return response.data;
-      } catch (e) { return null; }
+      } catch (e) {
+        // Log discreto para não poluir
+        // this.logger.warn(`Backtest falhou: ${e.message}`);
+        return null; 
+      }
   }
 
   private async saveStrategy(gene: StrategyGene, symbol: string, totalRoi: number, avgRoi: number, history: any[]) {
-    
-    this.logger.log(`💾 A analisar histórico... (Total: ${history?.length})`);
-      if (history && history.length > 0) {
-          // JSON.stringify vai mostrar TODAS as propriedades: { entryPrice: ..., exitPrice: ..., ???: ... }
-          this.logger.log(`🔎 TRADE OBJECT: ${JSON.stringify(history[0])}`);
-      }
-
     try {
-      // 1. CALCULAR WIN RATE REAL
       const wins = history.filter(t => t.roi > 0).length;
       const winRate = history.length > 0 ? (wins / history.length) * 100 : 0;
 
-      // 2. CALCULAR DRAWDOWN REAL (Máximo declínio acumulado)
-      let peak = 1000; // Capital inicial base
+      let peak = 1000;
       let currentBalance = 1000;
       let maxDrawdown = 0;
 
       for (const trade of history) {
-          // Aplica o ROI da trade ao saldo
-          // Nota: trade.roi vem em percentagem (ex: 5.5 para 5.5%)
           currentBalance = currentBalance * (1 + (trade.roi / 100));
-          
-          if (currentBalance > peak) {
-              peak = currentBalance;
-          }
-
+          if (currentBalance > peak) peak = currentBalance;
           const dd = (peak - currentBalance) / peak;
-          if (dd > maxDrawdown) {
-              maxDrawdown = dd;
-          }
+          if (dd > maxDrawdown) maxDrawdown = dd;
       }
 
       const apiPayload = {
-          name: `WFA-Pro-${new Date().getTime()}`,
+          name: `Alpha-Gen-${new Date().getTime().toString().slice(-4)}`,
           symbol: symbol,
           config: gene,
           roi: totalRoi,
-          drawdown: maxDrawdown * 100, // Converter para % (ex: 25.5)
+          drawdown: maxDrawdown * 100, 
           winRate: winRate,
           trades: history.length,
           trainStartDate: new Date(), 
           trainEndDate: new Date(),
-          tradeHistory: history // O histórico real vai aqui
+          tradeHistory: history 
       };
 
       await firstValueFrom(this.httpService.post(this.API_URL, apiPayload));
-      this.logger.log(`💾 Estratégia WFA guardada! (WinRate: ${winRate.toFixed(1)}% | DD: ${(maxDrawdown*100).toFixed(1)}%)`);
+      this.logger.log(`💾 ESTRATÉGIA GUARDADA! (WinRate: ${winRate.toFixed(1)}% | DD: ${(maxDrawdown*100).toFixed(1)}%)`);
     } catch (e) { 
         this.logger.error('Erro ao guardar: ' + e.message); 
     }
-}
+  }
 }
