@@ -58,3 +58,10 @@ export interface SimulationResult {
     sortino: number;  // 🔥 NOVO
   };
 }
+
+export const INDICATOR_GRID = {
+  RSI_PERIODS: [14, 21, 28],      // Curto, Médio, Longo
+  EMA_PERIODS: [9, 21, 50, 200],  // As médias móveis mais respeitadas
+  MACD_SETTINGS: ['STD'],         // Standard (12, 26, 9)
+  ATR_PERIODS: [14],              // Padrão de indústria
+};

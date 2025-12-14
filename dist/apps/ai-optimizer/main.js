@@ -158,6 +158,34 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
         this.logger.error('❌ FIM: O mercado está difícil. Nenhuma estratégia robusta encontrada hoje.');
         return null;
     }
+    getClassicStrategies() {
+        const seeds = [];
+        seeds.push({
+            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 14, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 30, weight: 1 }],
+            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 14, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 70, weight: 1 }],
+            exitRulesLong: [], exitRulesShort: [],
+            stopLossType: 'FIXED', stopLossPct: 0.02, atrMultiplier: 0, atrPeriod: 0,
+            takeProfitPct: 0.04, breakEvenPct: 0.015, trendFilter: false,
+            feePct: 0.001, slippagePct: 0.0005
+        });
+        seeds.push({
+            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.EMA, period: 50, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 'PRICE', weight: 1 }],
+            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.EMA, period: 50, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 'PRICE', weight: 1 }],
+            exitRulesLong: [], exitRulesShort: [],
+            stopLossType: 'ATR', stopLossPct: 0, atrMultiplier: 3, atrPeriod: 14,
+            takeProfitPct: 0.15, breakEvenPct: 0.02, trendFilter: true,
+            feePct: 0.001, slippagePct: 0.0005
+        });
+        seeds.push({
+            entryRulesLong: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 7, operator: genetic_bot_types_1.ComparisonOperator.LESS_THAN, value: 20, weight: 1 }],
+            entryRulesShort: [{ indicator: genetic_bot_types_1.IndicatorType.RSI, period: 7, operator: genetic_bot_types_1.ComparisonOperator.GREATER_THAN, value: 80, weight: 1 }],
+            exitRulesLong: [], exitRulesShort: [],
+            stopLossType: 'FIXED', stopLossPct: 0.01, atrMultiplier: 0, atrPeriod: 0,
+            takeProfitPct: 0.02, breakEvenPct: 0.005, trendFilter: false,
+            feePct: 0.001, slippagePct: 0.0005
+        });
+        return seeds;
+    }
     async runOptimization(startDate, endDate, symbol) {
         this.logger.log(`🚀 A iniciar WFA (Long/Short) para ${symbol}...`);
         const trainWindowMonths = 3;
@@ -211,9 +239,12 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
         }
     }
     async optimizeForPeriod(start, end, symbol) {
-        const POPULATION_SIZE = 20;
-        const GENERATIONS = 5;
-        let population = Array.from({ length: POPULATION_SIZE }, () => this.generateRandomGene());
+        const POPULATION_SIZE = 100;
+        const GENERATIONS = 20;
+        const seeds = this.getClassicStrategies();
+        const randomCount = POPULATION_SIZE - seeds.length;
+        const randomPopulation = Array.from({ length: randomCount }, () => this.generateRandomGene());
+        let population = [...seeds, ...randomPopulation];
         let bestResult = null;
         for (let generation = 1; generation <= GENERATIONS; generation++) {
             const results = [];
@@ -278,36 +309,35 @@ let AiOptimizerService = AiOptimizerService_1 = class AiOptimizerService {
             entryRulesShort: Array.from({ length: numEntry }, () => this.generateRandomRule()),
             exitRulesLong: [],
             exitRulesShort: [],
-            stopLossType: Math.random() > 0.6 ? 'ATR' : 'FIXED',
-            stopLossPct: (Math.random() * 0.04) + 0.01,
-            atrMultiplier: (Math.random() * 2.5) + 1.5,
+            stopLossType: Math.random() > 0.5 ? 'ATR' : 'FIXED',
+            stopLossPct: [0.01, 0.015, 0.02, 0.025, 0.03][Math.floor(Math.random() * 5)],
+            atrMultiplier: [1.5, 2.0, 2.5, 3.0][Math.floor(Math.random() * 4)],
             atrPeriod: 14,
-            takeProfitPct: (Math.random() * 0.10) + 0.02,
-            breakEvenPct: (Math.random() * 0.03) + 0.01,
-            trendFilter: Math.random() > 0.2,
-            feePct: 0.001,
-            slippagePct: 0.0005
+            takeProfitPct: [0.03, 0.05, 0.08, 0.12][Math.floor(Math.random() * 4)],
+            breakEvenPct: [0.01, 0.015, 0.02][Math.floor(Math.random() * 3)],
+            trendFilter: Math.random() > 0.3,
+            feePct: 0.001, slippagePct: 0.0005
         };
     }
     generateRandomRule() {
-        const types = [genetic_bot_types_1.IndicatorType.RSI, genetic_bot_types_1.IndicatorType.MACD, genetic_bot_types_1.IndicatorType.SMA, genetic_bot_types_1.IndicatorType.EMA];
+        const types = [genetic_bot_types_1.IndicatorType.RSI, genetic_bot_types_1.IndicatorType.SMA, genetic_bot_types_1.IndicatorType.EMA, genetic_bot_types_1.IndicatorType.MACD];
         const indicator = types[Math.floor(Math.random() * types.length)];
         const operators = [genetic_bot_types_1.ComparisonOperator.GREATER_THAN, genetic_bot_types_1.ComparisonOperator.LESS_THAN];
         const op = operators[Math.floor(Math.random() * operators.length)];
         let value = 0;
         let period = 14;
         if (indicator === genetic_bot_types_1.IndicatorType.RSI) {
-            value = Math.floor(Math.random() * 80) + 10;
-            period = Math.floor(Math.random() * 20) + 5;
+            value = [20, 25, 30, 70, 75, 80][Math.floor(Math.random() * 6)];
+            period = genetic_bot_types_1.INDICATOR_GRID.RSI_PERIODS[Math.floor(Math.random() * genetic_bot_types_1.INDICATOR_GRID.RSI_PERIODS.length)];
         }
         else if (indicator === genetic_bot_types_1.IndicatorType.MACD) {
             value = 0;
         }
         else {
             value = 'PRICE';
-            period = Math.random() > 0.5 ? 20 : (Math.random() > 0.5 ? 50 : 200);
+            period = genetic_bot_types_1.INDICATOR_GRID.EMA_PERIODS[Math.floor(Math.random() * genetic_bot_types_1.INDICATOR_GRID.EMA_PERIODS.length)];
         }
-        return { indicator, period, operator: op, value, weight: Math.random() };
+        return { indicator, period, operator: op, value, weight: 1 };
     }
     async runBacktest(gene, start, end, symbol) {
         try {
@@ -376,7 +406,7 @@ exports.AiOptimizerService = AiOptimizerService = AiOptimizerService_1 = __decor
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ComparisonOperator = exports.IndicatorType = void 0;
+exports.INDICATOR_GRID = exports.ComparisonOperator = exports.IndicatorType = void 0;
 var IndicatorType;
 (function (IndicatorType) {
     IndicatorType["RSI"] = "RSI";
@@ -391,6 +421,12 @@ var ComparisonOperator;
     ComparisonOperator["CROSS_OVER"] = "CROSS_OVER";
     ComparisonOperator["CROSS_UNDER"] = "CROSS_UNDER";
 })(ComparisonOperator || (exports.ComparisonOperator = ComparisonOperator = {}));
+exports.INDICATOR_GRID = {
+    RSI_PERIODS: [14, 21, 28],
+    EMA_PERIODS: [9, 21, 50, 200],
+    MACD_SETTINGS: ['STD'],
+    ATR_PERIODS: [14],
+};
 
 
 /***/ }),

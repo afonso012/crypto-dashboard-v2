@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { StrategyGene, SimulationResult, StrategyRule, IndicatorType, ComparisonOperator } from './genetic-bot.types';
+import { StrategyGene, SimulationResult, StrategyRule, IndicatorType, ComparisonOperator, INDICATOR_GRID } from './genetic-bot.types';
 
 @Injectable()
 export class AiOptimizerService {
@@ -42,6 +42,42 @@ export class AiOptimizerService {
     return null;
   }
 
+  private getClassicStrategies(): StrategyGene[] {
+    const seeds: StrategyGene[] = [];
+
+    // 1. CLÁSSICO: RSI MEAN REVERSION (Compra fundo, Vende topo)
+    seeds.push({
+        entryRulesLong: [{ indicator: IndicatorType.RSI, period: 14, operator: ComparisonOperator.LESS_THAN, value: 30, weight: 1 }],
+        entryRulesShort: [{ indicator: IndicatorType.RSI, period: 14, operator: ComparisonOperator.GREATER_THAN, value: 70, weight: 1 }],
+        exitRulesLong: [], exitRulesShort: [],
+        stopLossType: 'FIXED', stopLossPct: 0.02, atrMultiplier: 0, atrPeriod: 0,
+        takeProfitPct: 0.04, breakEvenPct: 0.015, trendFilter: false,
+        feePct: 0.001, slippagePct: 0.0005
+    });
+
+    // 2. CLÁSSICO: TREND FOLLOWER (EMA 50)
+    seeds.push({
+        entryRulesLong: [{ indicator: IndicatorType.EMA, period: 50, operator: ComparisonOperator.LESS_THAN, value: 'PRICE', weight: 1 }], // Preço > EMA
+        entryRulesShort: [{ indicator: IndicatorType.EMA, period: 50, operator: ComparisonOperator.GREATER_THAN, value: 'PRICE', weight: 1 }], // Preço < EMA
+        exitRulesLong: [], exitRulesShort: [],
+        stopLossType: 'ATR', stopLossPct: 0, atrMultiplier: 3, atrPeriod: 14, // Stop largo (3x ATR) para aguentar a tendência
+        takeProfitPct: 0.15, breakEvenPct: 0.02, trendFilter: true, // Filtro de tendência ativo
+        feePct: 0.001, slippagePct: 0.0005
+    });
+
+    // 3. CLÁSSICO: SCALPER AGRESSIVO
+    seeds.push({
+        entryRulesLong: [{ indicator: IndicatorType.RSI, period: 7, operator: ComparisonOperator.LESS_THAN, value: 20, weight: 1 }],
+        entryRulesShort: [{ indicator: IndicatorType.RSI, period: 7, operator: ComparisonOperator.GREATER_THAN, value: 80, weight: 1 }],
+        exitRulesLong: [], exitRulesShort: [],
+        stopLossType: 'FIXED', stopLossPct: 0.01, atrMultiplier: 0, atrPeriod: 0,
+        takeProfitPct: 0.02, breakEvenPct: 0.005, trendFilter: false,
+        feePct: 0.001, slippagePct: 0.0005
+    });
+
+    return seeds;
+  }
+  
   // ===========================================================================
   // 🚀 MÉTODO CENTRAL: WALK-FORWARD ANALYSIS (WFA)
   // ===========================================================================
@@ -125,10 +161,19 @@ export class AiOptimizerService {
   // 🧬 HELPER: OTIMIZADOR GENÉTICO (CORRIGIDO PARA LONG/SHORT)
   // ===========================================================================
   private async optimizeForPeriod(start: Date, end: Date, symbol: string): Promise<SimulationResult | null> {
-    const POPULATION_SIZE = 20;
-    const GENERATIONS = 5; // Rápido para WFA
+    const POPULATION_SIZE = 100; // Já tinhas aumentado isto
+    const GENERATIONS = 20;      // E isto
 
-    let population: StrategyGene[] = Array.from({ length: POPULATION_SIZE }, () => this.generateRandomGene()); 
+    // 1. INJEÇÃO DE SEMENTES ("Conhecimento Prévio")
+    const seeds = this.getClassicStrategies();
+    
+    // O resto da população é aleatória
+    const randomCount = POPULATION_SIZE - seeds.length;
+    const randomPopulation = Array.from({ length: randomCount }, () => this.generateRandomGene());
+    
+    // População Híbrida: Génios + Aleatórios
+    let population: StrategyGene[] = [...seeds, ...randomPopulation]; 
+    
     let bestResult: SimulationResult | null = null;
 
     for (let generation = 1; generation <= GENERATIONS; generation++) {
@@ -221,21 +266,26 @@ export class AiOptimizerService {
       exitRulesLong: [], 
       exitRulesShort: [], 
       
-      stopLossType: Math.random() > 0.6 ? 'ATR' : 'FIXED', 
-      stopLossPct: (Math.random() * 0.04) + 0.01, 
-      atrMultiplier: (Math.random() * 2.5) + 1.5,
-      atrPeriod: 14,
-      takeProfitPct: (Math.random() * 0.10) + 0.02, 
-      breakEvenPct: (Math.random() * 0.03) + 0.01, 
-      trendFilter: Math.random() > 0.2, // 80% ativo
-
-      feePct: 0.001, 
-      slippagePct: 0.0005 
+      stopLossType: Math.random() > 0.5 ? 'ATR' : 'FIXED', 
+      
+      // Stop Loss agora é discreto (passos de 0.5%)
+      stopLossPct: [0.01, 0.015, 0.02, 0.025, 0.03][Math.floor(Math.random() * 5)],
+      
+      // Multiplicador ATR discreto (1.5, 2.0, 2.5, 3.0)
+      atrMultiplier: [1.5, 2.0, 2.5, 3.0][Math.floor(Math.random() * 4)],
+      atrPeriod: 14, // Fixo na grelha
+      
+      takeProfitPct: [0.03, 0.05, 0.08, 0.12][Math.floor(Math.random() * 4)],
+      
+      breakEvenPct: [0.01, 0.015, 0.02][Math.floor(Math.random() * 3)],
+      
+      trendFilter: Math.random() > 0.3,
+      feePct: 0.001, slippagePct: 0.0005
     };
   }
 
   private generateRandomRule(): StrategyRule {
-    const types = [IndicatorType.RSI, IndicatorType.MACD, IndicatorType.SMA, IndicatorType.EMA];
+    const types = [IndicatorType.RSI, IndicatorType.SMA, IndicatorType.EMA, IndicatorType.MACD];
     const indicator = types[Math.floor(Math.random() * types.length)];
     const operators = [ComparisonOperator.GREATER_THAN, ComparisonOperator.LESS_THAN];
     const op = operators[Math.floor(Math.random() * operators.length)];
@@ -243,16 +293,20 @@ export class AiOptimizerService {
     let value: number | 'PRICE' = 0;
     let period = 14;
 
+    // 🔥 AQUI ESTÁ A MUDANÇA: Escolher da Grelha em vez de Math.random()
     if (indicator === IndicatorType.RSI) { 
-        value = Math.floor(Math.random() * 80) + 10; 
-        period = Math.floor(Math.random() * 20) + 5; 
-    } else if (indicator === IndicatorType.MACD) { 
+        value = [20, 25, 30, 70, 75, 80][Math.floor(Math.random() * 6)]; // Níveis chave
+        period = INDICATOR_GRID.RSI_PERIODS[Math.floor(Math.random() * INDICATOR_GRID.RSI_PERIODS.length)];
+    } 
+    else if (indicator === IndicatorType.MACD) { 
         value = 0; 
-    } else { 
+    } 
+    else { // EMA ou SMA
         value = 'PRICE'; 
-        period = Math.random() > 0.5 ? 20 : (Math.random() > 0.5 ? 50 : 200); 
+        period = INDICATOR_GRID.EMA_PERIODS[Math.floor(Math.random() * INDICATOR_GRID.EMA_PERIODS.length)];
     }
-    return { indicator, period, operator: op, value, weight: Math.random() };
+    
+    return { indicator, period, operator: op, value, weight: 1 };
   }
 
   // ===========================================================================
