@@ -359,6 +359,7 @@ var IndicatorType;
     IndicatorType["SMA"] = "SMA";
     IndicatorType["EMA"] = "EMA";
     IndicatorType["ADX"] = "ADX";
+    IndicatorType["CORR_BTC"] = "CORR_BTC";
 })(IndicatorType || (exports.IndicatorType = IndicatorType = {}));
 var ComparisonOperator;
 (function (ComparisonOperator) {
@@ -372,7 +373,8 @@ exports.INDICATOR_GRID = {
     EMA_PERIODS: [9, 21, 50, 100, 200],
     SMA_PERIODS: [20, 50, 200],
     ATR_PERIODS: [14],
-    ADX_PERIODS: [14]
+    ADX_PERIODS: [14],
+    CORR_PERIODS: [14]
 };
 
 

@@ -168,9 +168,10 @@ const TA = __webpack_require__(/*! technicalindicators */ "technicalindicators")
 const INDICATOR_GRID = {
     RSI_PERIODS: [14, 21],
     EMA_PERIODS: [9, 21, 50, 100, 200],
-    SMA_PERIODS: [20, 50, 200],
+    SMA_PERIODS: [20, 50],
     ATR_PERIODS: [14],
-    ADX_PERIODS: [14]
+    ADX_PERIODS: [14],
+    CORR_PERIODS: [14]
 };
 let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineService {
     constructor(klineRepo) {
@@ -180,49 +181,83 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
         this.indicatorCache = new Map();
     }
     async runBacktest(params) {
-        const cacheKey = `${params.symbol}_${Math.floor(params.startDate.getTime() / 1000)}_${Math.floor(params.endDate.getTime() / 1000)}`;
-        let marketData = this.klineCache.get(cacheKey);
-        if (!marketData) {
-            const klines = await this.klineRepo.find({
-                where: {
-                    symbol: params.symbol,
-                    time: (0, typeorm_2.Between)(Math.floor(params.startDate.getTime() / 1000), Math.floor(params.endDate.getTime() / 1000)),
-                },
-                order: { time: 'ASC' },
-            });
-            if (klines.length < 200)
-                return { error: 'Dados insuficientes (min 200 velas).' };
-            marketData = {
-                closes: klines.map(k => typeof k.close === 'string' ? parseFloat(k.close) : k.close),
-                highs: klines.map(k => typeof k.high === 'string' ? parseFloat(k.high) : k.high),
-                lows: klines.map(k => typeof k.low === 'string' ? parseFloat(k.low) : k.low),
-                times: klines.map(k => k.time)
-            };
-            this.klineCache.set(cacheKey, marketData);
-            if (this.klineCache.size > 20) {
-                this.klineCache.clear();
-                this.indicatorCache.clear();
-            }
-        }
+        const startTs = Math.floor(params.startDate.getTime() / 1000);
+        const endTs = Math.floor(params.endDate.getTime() / 1000);
+        const cacheKey = `${params.symbol}_${startTs}_${endTs}`;
+        let targetData = await this.getMarketData(params.symbol, startTs, endTs);
+        if (!targetData)
+            return { error: `Dados insuficientes para ${params.symbol}` };
+        let btcData = await this.getMarketData('BTCUSDT', startTs, endTs);
+        if (!btcData)
+            btcData = targetData;
         let indicators = this.indicatorCache.get(cacheKey);
         if (!indicators) {
-            indicators = this.preComputeAllIndicators(marketData.closes, marketData.highs, marketData.lows);
+            indicators = this.preComputeAllIndicators(targetData, btcData);
             this.indicatorCache.set(cacheKey, indicators);
         }
-        return this.fastSimulation(marketData, indicators, params.strategy, params.initialCapital);
+        return this.fastSimulation(targetData, indicators, params.strategy, params.initialCapital);
     }
-    preComputeAllIndicators(closes, highs, lows) {
+    async getMarketData(symbol, startTs, endTs) {
+        const key = `${symbol}_${startTs}_${endTs}`;
+        if (this.klineCache.has(key))
+            return this.klineCache.get(key);
+        const klines = await this.klineRepo.find({
+            where: { symbol, time: (0, typeorm_2.Between)(startTs, endTs) },
+            order: { time: 'ASC' },
+        });
+        if (klines.length < 200)
+            return null;
+        const data = {
+            closes: klines.map(k => parseFloat(k.close)),
+            highs: klines.map(k => parseFloat(k.high)),
+            lows: klines.map(k => parseFloat(k.low)),
+            times: klines.map(k => k.time)
+        };
+        this.klineCache.set(key, data);
+        return data;
+    }
+    preComputeAllIndicators(target, benchmark) {
+        const closes = target.closes;
         const computed = {};
         INDICATOR_GRID.RSI_PERIODS.forEach(p => computed[`RSI_${p}`] = TA.RSI.calculate({ period: p, values: closes }));
         INDICATOR_GRID.EMA_PERIODS.forEach(p => computed[`EMA_${p}`] = TA.EMA.calculate({ period: p, values: closes }));
         INDICATOR_GRID.SMA_PERIODS.forEach(p => computed[`SMA_${p}`] = TA.SMA.calculate({ period: p, values: closes }));
-        INDICATOR_GRID.ATR_PERIODS.forEach(p => computed[`ATR_${p}`] = TA.ATR.calculate({ period: p, high: highs, low: lows, close: closes }));
+        INDICATOR_GRID.ATR_PERIODS.forEach(p => computed[`ATR_${p}`] = TA.ATR.calculate({ period: p, high: target.highs, low: target.lows, close: closes }));
         INDICATOR_GRID.ADX_PERIODS.forEach(p => {
-            computed[`ADX_${p}`] = TA.ADX.calculate({ period: p, high: highs, low: lows, close: closes });
+            computed[`ADX_${p}`] = TA.ADX.calculate({ period: p, high: target.highs, low: target.lows, close: closes });
         });
         const macd = TA.MACD.calculate({ values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, SimpleMAOscillator: false, SimpleMASignal: false });
         computed['MACD_STD'] = macd;
+        INDICATOR_GRID.CORR_PERIODS.forEach(period => {
+            computed[`CORR_BTC_${period}`] = this.calculateRollingCorrelation(target.closes, benchmark.closes, period);
+        });
         return computed;
+    }
+    calculateRollingCorrelation(assetA, assetB, period) {
+        const result = new Array(assetA.length).fill(0);
+        const len = Math.min(assetA.length, assetB.length);
+        for (let i = period; i < len; i++) {
+            const sliceA = assetA.slice(i - period, i);
+            const sliceB = assetB.slice(i - period, i);
+            result[i] = this.pearson(sliceA, sliceB);
+        }
+        return result;
+    }
+    pearson(x, y) {
+        const n = x.length;
+        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        for (let i = 0; i < n; i++) {
+            sumX += x[i];
+            sumY += y[i];
+            sumXY += x[i] * y[i];
+            sumX2 += x[i] * x[i];
+            sumY2 += y[i] * y[i];
+        }
+        const numerator = (n * sumXY) - (sumX * sumY);
+        const denominator = Math.sqrt(((n * sumX2) - (sumX * sumX)) * ((n * sumY2) - (sumY * sumY)));
+        if (denominator === 0)
+            return 0;
+        return numerator / denominator;
     }
     fastSimulation(data, indicators, strategy, initialCapital) {
         const { closes, highs, lows, times } = data;
@@ -237,29 +272,22 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
         const CIRCUIT_BREAKER_DD = 0.15;
         for (let i = 200; i < len; i++) {
             const currentPrice = closes[i];
-            const high = highs[i];
-            const low = lows[i];
-            const currentDate = new Date(times[i] * 1000);
             if (balance > peakBalance)
                 peakBalance = balance;
-            const currentDD = (peakBalance - balance) / peakBalance;
-            const isCircuitBreakerTripped = currentDD > CIRCUIT_BREAKER_DD;
-            const trendEmaArr = indicators['EMA_200'];
-            const trendEma = trendEmaArr ? trendEmaArr[i - 200] : 0;
-            const atrArr = indicators[`ATR_${strategy.atrPeriod || 14}`];
-            const atrValue = atrArr ? atrArr[i - (strategy.atrPeriod || 14)] : 0;
-            const adxArr = indicators['ADX_14'];
-            const adxValue = adxArr ? adxArr[i - 14]?.adx : 0;
+            if ((peakBalance - balance) / peakBalance > CIRCUIT_BREAKER_DD) {
+                if (i % 60 === 0)
+                    equityCurve.push({ date: new Date(times[i] * 1000), balance });
+                continue;
+            }
+            const trendEma = indicators['EMA_200'] ? indicators['EMA_200'][i - 200] : 0;
+            const atrValue = indicators[`ATR_${strategy.atrPeriod || 14}`] ? indicators[`ATR_${strategy.atrPeriod || 14}`][i - (strategy.atrPeriod || 14)] : 0;
+            const adxValue = indicators['ADX_14'] ? indicators['ADX_14'][i - 14]?.adx : 0;
+            const correlation = indicators['CORR_BTC_14'] ? indicators['CORR_BTC_14'][i] : 0;
             if (!position) {
-                if (isCircuitBreakerTripped) {
-                    if (i % 60 === 0)
-                        equityCurve.push({ date: currentDate, balance });
-                    continue;
-                }
-                const minAdx = strategy.adxMin || 20;
+                const minAdx = strategy.adxMin || 15;
                 if (adxValue < minAdx) {
                     if (i % 60 === 0)
-                        equityCurve.push({ date: currentDate, balance });
+                        equityCurve.push({ date: new Date(times[i] * 1000), balance });
                     continue;
                 }
                 const isBullish = strategy.trendFilter ? (currentPrice > trendEma) : true;
@@ -267,14 +295,14 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 const effectiveAtr = atrValue > 0 ? atrValue : currentPrice * 0.02;
                 const stopDist = effectiveAtr * (strategy.atrMultiplier || 2);
                 const riskAmt = balance * RISK_PER_TRADE;
-                if (isBullish && this.checkRules(i, currentPrice, strategy.entryRulesLong, indicators)) {
+                if (isBullish && this.checkRules(i, currentPrice, strategy.entryRulesLong, indicators, correlation)) {
                     const entryPrice = currentPrice * (1 + (strategy.slippagePct || 0.0005));
                     let size = riskAmt / stopDist;
                     if (size * entryPrice > balance)
                         size = balance / entryPrice;
                     position = { side: 'LONG', entryPrice, size, entryIndex: i, initialAtr: effectiveAtr };
                 }
-                else if (isBearish && this.checkRules(i, currentPrice, strategy.entryRulesShort, indicators)) {
+                else if (isBearish && this.checkRules(i, currentPrice, strategy.entryRulesShort, indicators, correlation)) {
                     const entryPrice = currentPrice * (1 - (strategy.slippagePct || 0.0005));
                     let size = riskAmt / stopDist;
                     if (size * entryPrice > balance)
@@ -283,7 +311,7 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 }
             }
             else {
-                const result = this.processExitLogic(i, position, strategy, high, low, currentPrice, balance, times, indicators);
+                const result = this.processExitLogic(i, position, strategy, highs[i], lows[i], currentPrice, balance, times, indicators);
                 if (result) {
                     balance = result.newBalance;
                     returnsVector.push(result.roi);
@@ -292,7 +320,7 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 }
             }
             if (i % 60 === 0)
-                equityCurve.push({ date: currentDate, balance: position ? balance : balance });
+                equityCurve.push({ date: new Date(times[i] * 1000), balance: position ? balance : balance });
         }
         return this.calculateStats(balance, initialCapital, trades, returnsVector, equityCurve);
     }
@@ -320,7 +348,7 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 exitPrice = tpPrice;
                 reason = 'TAKE_PROFIT';
             }
-            else if (strategy.exitRulesLong && this.checkRules(i, currentPrice, strategy.exitRulesLong, indicators)) {
+            else if (strategy.exitRulesLong && this.checkRules(i, currentPrice, strategy.exitRulesLong, indicators, 0)) {
                 exitPrice = currentPrice;
                 reason = 'EXIT_RULE';
             }
@@ -345,20 +373,18 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 exitPrice = tpPrice;
                 reason = 'TAKE_PROFIT';
             }
-            else if (strategy.exitRulesShort && this.checkRules(i, currentPrice, strategy.exitRulesShort, indicators)) {
+            else if (strategy.exitRulesShort && this.checkRules(i, currentPrice, strategy.exitRulesShort, indicators, 0)) {
                 exitPrice = currentPrice;
                 reason = 'EXIT_RULE';
             }
         }
         if (exitPrice > 0) {
-            let realExitPrice = 0;
-            let newBalance = balance;
+            let realExitPrice = 0, newBalance = balance;
             if (position.side === 'LONG') {
                 realExitPrice = exitPrice * (1 - slippage);
                 if (reason === 'STOP_LOSS')
                     realExitPrice = exitPrice * (1 - (slippage * 2));
-                const gross = position.size * realExitPrice;
-                const net = gross * (1 - fee);
+                const net = (position.size * realExitPrice) * (1 - fee);
                 newBalance = balance - (position.size * position.entryPrice) + net;
             }
             else {
@@ -370,30 +396,19 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
                 const fees = (initialVal * fee) + (buyBack * fee);
                 newBalance = balance + (initialVal - buyBack - fees);
             }
-            const pnl = newBalance - balance;
-            const roi = (pnl / balance) * 100;
-            return {
-                newBalance,
-                roi,
-                trade: {
-                    entryDate: new Date(times[position.entryIndex] * 1000),
-                    exitDate: new Date(times[i] * 1000),
-                    side: position.side,
-                    entryPrice: position.entryPrice,
-                    exitPrice: realExitPrice,
-                    roi: roi,
-                    reason
-                }
-            };
+            return { newBalance, roi: ((newBalance - balance) / balance) * 100, trade: { entryDate: new Date(times[position.entryIndex] * 1000), exitDate: new Date(times[i] * 1000), side: position.side, entryPrice: position.entryPrice, exitPrice: realExitPrice, roi: ((newBalance - balance) / balance) * 100, reason } };
         }
         return null;
     }
-    checkRules(index, currentPrice, rules, indicators) {
+    checkRules(index, currentPrice, rules, indicators, correlation) {
         if (!rules || rules.length === 0)
             return true;
         return rules.every(rule => {
             let val = 0;
-            if (rule.indicator === 'MACD') {
+            if (rule.indicator === 'CORR_BTC') {
+                val = correlation;
+            }
+            else if (rule.indicator === 'MACD') {
                 const arr = indicators['MACD_STD'];
                 val = (arr && arr[index - 34]) ? arr[index - 34].histogram : 0;
             }
@@ -417,9 +432,7 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
     }
     calculateStats(finalBalance, initialCapital, trades, returnsVector, equityCurve) {
         const totalReturnPct = ((finalBalance - initialCapital) / initialCapital) * 100;
-        let peak = initialCapital;
-        let maxDrawdownPct = 0;
-        let running = initialCapital;
+        let peak = initialCapital, maxDrawdownPct = 0, running = initialCapital;
         for (const t of trades) {
             const profit = running * (t.roi / 100);
             running += profit;
@@ -433,16 +446,7 @@ let BacktestEngineService = BacktestEngineService_1 = class BacktestEngineServic
         const downsideDeviation = Math.sqrt(negativeReturns.reduce((acc, r) => acc + (r * r), 0) / (returnsVector.length || 1));
         const wins = trades.filter(t => t.roi > 0).length;
         const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
-        return {
-            totalReturnPct,
-            totalTrades: trades.length,
-            maxDrawdownPct: maxDrawdownPct * 100,
-            winRate,
-            downsideDeviation,
-            finalBalance,
-            history: trades,
-            equityCurve
-        };
+        return { totalReturnPct, totalTrades: trades.length, maxDrawdownPct: maxDrawdownPct * 100, winRate, downsideDeviation, finalBalance, history: trades, equityCurve };
     }
 };
 exports.BacktestEngineService = BacktestEngineService;

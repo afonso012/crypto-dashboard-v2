@@ -3,7 +3,8 @@ export enum IndicatorType {
   MACD = 'MACD',
   SMA = 'SMA',
   EMA = 'EMA',
-  ADX = 'ADX' // 🔥 NOVO
+  ADX = 'ADX',
+  CORR_BTC = 'CORR_BTC'
 }
 
 export enum ComparisonOperator {
@@ -19,7 +20,8 @@ export const INDICATOR_GRID = {
   EMA_PERIODS: [9, 21, 50, 100, 200],
   SMA_PERIODS: [20, 50, 200],
   ATR_PERIODS: [14],
-  ADX_PERIODS: [14] // 🔥 NOVO
+  ADX_PERIODS: [14],
+  CORR_PERIODS: [14]
 };
 
 export interface StrategyRule {
@@ -51,7 +53,7 @@ export interface StrategyGene {
 
   // Filtros
   trendFilter: boolean;
-  adxMin: number; // 🔥 NOVO: O TypeScript já não vai reclamar
+  adxMin: number;
 
   // Custos
   slippagePct: number;
